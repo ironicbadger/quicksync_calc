@@ -37,7 +37,7 @@ cleanup(){
 
 start_container(){
 
-  if ! $(docker inspect jellyfin >/dev/null 2>&1); then
+  if ! $(docker inspect jellyfin-qsvtest >/dev/null 2>&1); then
     docker pull jellyfin/jellyfin >/dev/null
     docker run --rm -it -d --name jellyfin-qsvtest --device=/dev/dri:/dev/dri -v $(pwd):/config jellyfin/jellyfin >/dev/null
   fi
