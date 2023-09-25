@@ -128,16 +128,27 @@ stop_container(){
 
 benchmarks(){
 
-  intel_gpu_top -s 100ms -l -o $1.output &
-  igtpid=$(echo $!)
+  if [ $cpu_vendor == 'Intel' ]; then
+    intel_gpu_top -s 100ms -l -o $1.output &
+    igtpid=$(echo $!)
+  elif [ $cpu_vendor == 'AMD' ]; then
+    amdgpu_top -u 1 --json > $1.output &
+    igtpid=$(echo $!)
+  fi
   docker exec -it jellyfin-qsvtest /config/benchmark.sh $1
   kill -s SIGINT $igtpid
 
   #Calculate average Wattage
   if [ $1 != "h264_1080p_cpu" ]; then
-    total_watts=$(awk '{ print $5 }' $1.output | grep -Ev '^0|Power|gpu' | paste -s -d + - | bc)
-    total_count=$(awk '{ print $5 }' $1.output | grep -Ev '^0|Power|gpu' | wc -l)
-    avg_watts=$(echo "scale=2; $total_watts / $total_count" | bc -l)
+    if [ $cpu_vendor == 'Intel' ]; then
+      total_watts=$(awk '{ print $5 }' $1.output | grep -Ev '^0|Power|gpu' | paste -s -d + - | bc)
+      total_count=$(awk '{ print $5 }' $1.output | grep -Ev '^0|Power|gpu' | wc -l)
+      avg_watts=$(echo "scale=2; $total_watts / $total_count" | bc -l)
+    elif [ $cpu_vendor == 'AMD' ]; then
+      total_watts=$(cat $1.output | jq -c -r '(.Sensors."GFX Power".value)' | paste -s -d + - | bc)
+      total_count=$(cat $1.output | jq -c -r '(.Sensors."GFX Power".value)' | wc -l)
+      avg_watts=$(echo "scale=2; $total_watts / $total_count" | bc -l)
+    fi
   else
     avg_watts="N/A"
   fi
@@ -183,11 +194,6 @@ main(){
 
   #Sets Array
   quicksyncstats_arr=("CPU|TEST|FILE|BITRATE|TIME|AVG_FPS|AVG_SPEED|AVG_WATTS")
-
-  #Collects CPU Model
-  echo "CPU Vendor: $cpu_vendor"
-  echo "CPU Model: $cpu_model"
-  exit 0
 
   benchmarks h264_1080p_cpu ribblehead_1080p_h264
 
