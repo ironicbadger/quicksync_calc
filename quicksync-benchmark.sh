@@ -121,11 +121,8 @@ main(){
   quicksyncstats_arr=("CPU|TEST|FILE|BITRATE|TIME|AVG_FPS|AVG_SPEED|AVG_WATTS")
 
   #Collects CPU Model
-  if $(grep -m1 'model name' /proc/cpuinfo | grep -E '13th'); then
-    cpu_model=$(grep -m1 'model name' /proc/cpuinfo | awk '{ print $NF }')
-  else
-    cpu_model=$(grep -m1 'model name' /proc/cpuinfo | awk '{ print $6 }')
-  fi
+  cpuinfo_model="$(grep -m1 'model name' /proc/cpuinfo | cut -d':' -f2)"
+  cpu_model="${cpuinfo_model:-1}"
 
   benchmarks h264_1080p_cpu ribblehead_1080p_h264
 
