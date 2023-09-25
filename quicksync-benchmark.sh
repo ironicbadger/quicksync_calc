@@ -135,7 +135,7 @@ benchmarks(){
     amdgpu_top -u 1 --json > $1.output &
     igtpid=$(echo $!)
   fi
-  docker exec -it jellyfin-qsvtest /config/benchmark.sh $1
+  docker exec -it jellyfin-qsvtest /config/benchmark.sh "$cpu_vendor" $1
   kill -s SIGINT $igtpid
 
   #Calculate average Wattage
