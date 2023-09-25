@@ -1,6 +1,59 @@
 #!/bin/bash
 
+get_cpu_model(){
+  local cpu_vendor=$(grep -m1 'vendor_id' /proc/cpuinfo | awk '{ print $NF }')
+  local cpu_model="Unknown"
+  case $cpu_vendor in
+    "GenuineIntel")
+      if $(grep -m1 'model name' /proc/cpuinfo | grep -E '13th'); then
+        cpu_model=$(grep -m1 'model name' /proc/cpuinfo | awk '{ print $NF }')
+      else
+        cpu_model=$(grep -m1 'model name' /proc/cpuinfo | awk '{ print $6 }')
+      fi
+      ;;
+    "AuthenticAMD")
+      if ! grep -m1 'model name' /proc/cpuinfo | grep -qi "radeon"
+      then
+        echo "AMD CPU without Radeon Graphics detected. Please use a CPU with Radeon Graphics"
+        return 1
+      fi
+      # e.g.: AMD Ryzen 7 PRO 4750U with Radeon Graphics
+      cpu_model=$(grep -m1 'model name' /proc/cpuinfo | sed -r -e 's/model name\t: AMD //' -e 's/ with Radeon Graphics//')
+      ;;
+  esac
+  echo "${cpu_model}"
+}
+
+get_cpu_vendor(){
+  local cpu_vendor=$(grep -m1 'vendor_id' /proc/cpuinfo | awk '{ print $NF }')
+  case $cpu_vendor in
+    "GenuineIntel")
+      cpu_vendor="Intel"
+      ;;
+    "AuthenticAMD")
+      cpu_vendor="AMD"
+      ;;
+    *)
+      cpu_vendor="Unknown"
+      ;;
+  esac
+  echo "${cpu_vendor}"
+}
+
+detect_cpu(){
+  cpu_vendor=$(get_cpu_vendor)
+  cpu_model=$(get_cpu_model)
+  # return code of get_cpu_model is 1 if CPU is not supported
+  return $?
+}
+
 start(){
+
+  if ! detect_cpu
+  then
+    echo "Error: ${cpu_model}" >&2
+    exit 127
+  fi
 
   cleanup
 
@@ -12,10 +65,21 @@ start(){
 
 dep_check(){
 
-  if ! which intel_gpu_top >/dev/null; then
-    echo "intel_gpu_top missing. Please install intel-gpu-tools"
-    exit 127
-  fi
+  case $cpu_vendor in
+    "Intel")
+      if ! which intel_gpu_top >/dev/null; then
+        echo "intel_gpu_top missing. Please install intel-gpu-tools"
+        exit 127
+      fi
+      ;;
+    "AMD")
+      if ! which amdgpu_top >/dev/null; then
+        echo "amdgpu_top missing. Please install amdgpu-top from https://github.com/Umio-Yasuno/amdgpu_top"
+        exit 127
+      fi
+      ;;
+  esac
+
 
   if ! which printf >/dev/null; then
     echo "printf missing. Please install printf"
@@ -121,11 +185,9 @@ main(){
   quicksyncstats_arr=("CPU|TEST|FILE|BITRATE|TIME|AVG_FPS|AVG_SPEED|AVG_WATTS")
 
   #Collects CPU Model
-  if $(grep -m1 'model name' /proc/cpuinfo | grep -E '13th'); then
-    cpu_model=$(grep -m1 'model name' /proc/cpuinfo | awk '{ print $NF }')
-  else
-    cpu_model=$(grep -m1 'model name' /proc/cpuinfo | awk '{ print $6 }')
-  fi
+  echo "CPU Vendor: $cpu_vendor"
+  echo "CPU Model: $cpu_model"
+  exit 0
 
   benchmarks h264_1080p_cpu ribblehead_1080p_h264
 
