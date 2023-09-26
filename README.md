@@ -21,7 +21,7 @@ Full instructions available at [blog.ktz.me](https://blog.ktz.me/i-need-your-hel
 ssh user@hostname
 
 # install a couple of dependencies (script tested on proxmox 8 + ubuntu 22.04)
-apt install docker jq bc intel-gpu-tools
+apt install docker jq bc intel-gpu-tools git
 
 # clone the git repo with the script
 git clone https://github.com/ironicbadger/quicksync_calc.git
