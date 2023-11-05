@@ -1,5 +1,7 @@
 #!/bin/bash
 
+cpu_vendor=$(grep -m1 "^vendor_id" /proc/cpuinfo | awk '{print $3}')
+
 start(){
 
   cleanup
@@ -12,10 +14,20 @@ start(){
 
 dep_check(){
 
-  if ! which intel_gpu_top >/dev/null; then
-    echo "intel_gpu_top missing. Please install intel-gpu-tools"
-    exit 127
-  fi
+  case $cpu_vendor in
+    AuthenticAMD )
+      echo "Detected AMD CPU"
+    ;;
+    GenuineIntel )
+      if ! which intel_gpu_top >/dev/null; then
+        echo "intel_gpu_top missing. Please install intel-gpu-tools"
+        exit 127
+      fi
+    ;;
+    * )
+      echo "Unsupported CPU vendor"
+    ;;
+  esac
 
   if ! which printf >/dev/null; then
     echo "printf missing. Please install printf"
@@ -37,14 +49,14 @@ cleanup(){
 
 start_container(){
 
-  if ! $(docker inspect jellyfin >/dev/null 2>&1); then
+  if ! docker inspect jellyfin >/dev/null 2>&1; then
     docker pull jellyfin/jellyfin >/dev/null
-    docker run --rm -it -d --name jellyfin-qsvtest --device=/dev/dri:/dev/dri -v $(pwd):/config jellyfin/jellyfin >/dev/null
+    docker run --rm -it -d --name jellyfin-qsvtest --device=/dev/dri:/dev/dri -v $PWD:/config jellyfin/jellyfin >/dev/null
   fi
 
   sleep 5s
 
-  if $(docker inspect jellyfin-qsvtest | jq -r '.[].State.Running'); then
+  if [[ "$(docker inspect jellyfin-qsvtest | jq -r '.[].State.Running')" = "true" ]]; then
     main
   else
     echo "Jellyfin QSV test container not running"
@@ -55,7 +67,7 @@ start_container(){
 
 stop_container(){
 
-  if $(docker inspect jellyfin-qsvtest | jq -r '.[].State.Running'); then
+  if [[ "$(docker inspect jellyfin-qsvtest | jq -r '.[].State.Running')" = "true" ]]; then
     docker stop jellyfin-qsvtest > /dev/null
     docker rmi jellyfin/jellyfin > /dev/null
   fi
@@ -64,13 +76,15 @@ stop_container(){
 
 benchmarks(){
 
-  intel_gpu_top -s 100ms -l -o $1.output &
-  igtpid=$(echo $!)
+  if [[ "$cpu_vendor" = "GenuineIntel" && "$1" != "h264_1080p_cpu" ]]; then
+    intel_gpu_top -s 100ms -l -o $1.output &
+    igtpid=$!
+  fi
   docker exec -it jellyfin-qsvtest /config/benchmark.sh $1
-  kill -s SIGINT $igtpid
 
   #Calculate average Wattage
-  if [ $1 != "h264_1080p_cpu" ]; then
+  if [[ "$cpu_vendor" = "GenuineIntel" && "$1" != "h264_1080p_cpu" ]]; then
+    kill -s SIGINT $igtpid
     total_watts=$(awk '{ print $5 }' $1.output | grep -Ev '^0|Power|gpu' | paste -s -d + - | bc)
     total_count=$(awk '{ print $5 }' $1.output | grep -Ev '^0|Power|gpu' | wc -l)
     avg_watts=$(echo "scale=2; $total_watts / $total_count" | bc -l)
@@ -121,7 +135,7 @@ main(){
   quicksyncstats_arr=("CPU|TEST|FILE|BITRATE|TIME|AVG_FPS|AVG_SPEED|AVG_WATTS")
 
   #Collects CPU Model
-  if $(grep -m1 'model name' /proc/cpuinfo | grep -E '13th'); then
+  if grep -m1 'model name' /proc/cpuinfo | grep -E '13th'; then
     cpu_model=$(grep -m1 'model name' /proc/cpuinfo | awk '{ print $NF }')
   else
     cpu_model=$(grep -m1 'model name' /proc/cpuinfo | awk '{ print $6 }')
