@@ -52,9 +52,14 @@ def munging(df):
 def viz(df):
     sns.set_theme(context='talk', style='whitegrid')
     metrics = ['AVG_FPS', 'AVG_WATTS','fps_per_watt']
-    fig, ax = plt.subplots(1, len(metrics), layout='constrained', figsize=(10, 5))
+    fig, ax = plt.subplots(1, len(metrics), figsize=(20, 5))
     for i, metric in enumerate(metrics):
-        sns.boxplot(df[df.generation.notna()], x="generation", y=metric, ax=ax[i])
+        sns.boxplot(df[df.generation.notna()], x="generation", y=metric, hue="TEST", ax=ax[i])
+        if i==1:
+            sns.move_legend(ax[i], "lower center", bbox_to_anchor=(.5, 1), ncol=4, title=None, frameon=False)
+        else:
+            ax[i].get_legend().remove()
+
     fig.savefig("plot.png", dpi=300)
 
 
