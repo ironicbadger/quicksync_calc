@@ -12,6 +12,11 @@ start(){
 
 dep_check(){
 
+  if ! which jq >/dev/null; then
+    echo "jq missing. Please install jq"
+    exit 127
+  fi
+
   if ! which intel_gpu_top >/dev/null; then
     echo "intel_gpu_top missing. Please install intel-gpu-tools"
     exit 127
