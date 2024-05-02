@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  deploy-via-tailscale:
+  build-visualization:
     runs-on: ubuntu-latest
     # Allow the job to commit to the repository
     permissions:
