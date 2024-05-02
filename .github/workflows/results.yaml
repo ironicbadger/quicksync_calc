@@ -1,0 +1,21 @@
+name: Build results visualization
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-via-tailscale:
+    runs-on: ubuntu-latest
+    # Allow the job to commit to the repository
+    permissions:
+        contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+            python-version: '3.10'
+            cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python analysis.py
