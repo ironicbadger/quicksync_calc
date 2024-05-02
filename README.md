@@ -1,5 +1,5 @@
 
-`Runs an ffmpeg benchmark to get Average Speed, FPS, and Watts
+Runs an ffmpeg benchmark to get Average Speed, FPS, and Watts
 ===========================================
 
 The purpose of this script is to benchmark Intel Quick Sync Video performance in integrated iGPUs using a standardised video. More information and rationale is available [at blog.ktz.me](https://blog.ktz.me/i-need-your-help-with-intel-quick-sync-benchmarking/).
