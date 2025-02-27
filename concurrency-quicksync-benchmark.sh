@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Global arrays for storing results and file names.
 declare -A results
 declare -A files
 tests=( "h264_1080p_cpu" "h264_1080p" "h264_4k" "hevc_8bit" "hevc_4k_10bit" )
@@ -56,7 +55,7 @@ concurrent_benchmarks(){
   for log in ffmpeg*.log; do
     while IFS= read -r sp; do
       total_speed=$(echo "$total_speed + $sp" | bc -l)
-      count=$((count+1))
+      (( count++ ))
     done < <(grep -Eo 'speed=[[:space:]]*[0-9]+(\.[0-9]+)?' "$log" | sed -E 's/speed=[[:space:]]*//')
     rm -f "$log"
   done
@@ -70,7 +69,7 @@ concurrent_benchmarks(){
 
 run_concurrency_test(){
   local test_type=$1
-  local file=""
+  local file
   case "$test_type" in
     "h264_1080p_cpu") file="ribblehead_1080p_h264" ;;
     "h264_1080p")    file="ribblehead_1080p_h264" ;;
@@ -84,9 +83,7 @@ run_concurrency_test(){
 
   echo "--------------------------------------------------"
   echo "Starting concurrency test for $test_type..."
-  local concurrency=1
-  local last_valid=0
-  local avg_speed=0
+  local concurrency=1 last_valid=0 avg_speed=0
   local speeds=()
 
   while true; do
@@ -94,16 +91,14 @@ run_concurrency_test(){
     echo -n "Concurrency: $concurrency, Running..."
     avg_speed=$(concurrent_benchmarks "$test_type" "$file" "$concurrency")
     echo -e "\rConcurrency: $concurrency, Average Speed: ${avg_speed}x"
-    if [ -z "$avg_speed" ]; then
-      break
-    fi
+    [ -z "$avg_speed" ] && break
     speeds+=("$avg_speed")
     if (( $(echo "$avg_speed < 1.0" | bc -l) )); then
       break
     else
       last_valid=$concurrency
     fi
-    concurrency=$((concurrency+1))
+    ((concurrency++))
   done
   echo "Maximum concurrency: ${last_valid}x"
   results["$test_type"]="${speeds[*]}"
@@ -116,44 +111,36 @@ run_all_tests(){
 }
 
 print_table(){
-  # Retrieve CPU model and trim leading spaces.
   local cpu
   cpu=$(grep -m1 'model name' /proc/cpuinfo | cut -d':' -f2 | sed 's/^[[:space:]]*//')
+
   local max_cols=0
   for test in "${tests[@]}"; do
-    IFS=' ' read -ra arr <<< "${results[$test]}"
-    if (( ${#arr[@]} > max_cols )); then
-      max_cols=${#arr[@]}
-    fi
+    read -ra arr <<< "${results[$test]}"
+    (( ${#arr[@]} > max_cols )) && max_cols=${#arr[@]}
   done
 
-  # Define fixed column widths.
-  local cpu_width=42
-  local test_width=16
-  local file_width=28
-  local col_width=8
-
-  # Print header.
-  printf "%-${cpu_width}s %-${test_width}s %-${file_width}s" "CPU" "TEST" "FILE"
+  local header="CPU|TEST|FILE"
   for ((i=1; i<=max_cols; i++)); do
-    printf " %-${col_width}s" "$i"
+    header+="|${i}x"
   done
-  printf "\n"
-
-  # Print each row.
+  
+  local table=("$header")
   for test in "${tests[@]}"; do
     local file=${files[$test]}
-    IFS=' ' read -ra arr <<< "${results[$test]}"
-    printf "%-${cpu_width}s %-${test_width}s %-${file_width}s" "$cpu" "$test" "$file"
+    read -ra arr <<< "${results[$test]}"
+    local row="${cpu}|${test}|${file}"
     for ((j=0; j<max_cols; j++)); do
       if [ $j -lt ${#arr[@]} ]; then
-        printf " %-${col_width}s" "${arr[j]}x"
+        row+="|${arr[j]}x"
       else
-        printf " %-${col_width}s" "–"
+        row+="|–"
       fi
     done
-    printf "\n"
+    table+=("$row")
   done
+  
+  printf '%s\n' "${table[@]}" | column -t -s '|'
 }
 
 main(){
