@@ -20,7 +20,18 @@ const app = new Hono<{ Bindings: Env }>();
 // Middleware
 app.use('*', logger());
 app.use('*', cors({
-  origin: ['https://quicksync.ktz.me', 'http://localhost:4321', 'http://localhost:3000'],
+  origin: (origin) => {
+    // Allow production, localhost, and Pages preview URLs
+    const allowed = [
+      'https://quicksync.ktz.me',
+      'http://localhost:4321',
+      'http://localhost:3000',
+    ];
+    if (allowed.includes(origin)) return origin;
+    // Allow Cloudflare Pages preview URLs
+    if (origin?.endsWith('.quicksync-web.pages.dev')) return origin;
+    return 'https://quicksync.ktz.me';
+  },
   allowMethods: ['GET', 'POST', 'OPTIONS'],
   allowHeaders: ['Content-Type'],
   maxAge: 86400,
