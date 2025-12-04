@@ -4,8 +4,7 @@
 # https://github.com/ironicbadger/quicksync_calc
 #
 # Environment variables:
-#   QUICKSYNC_SUBMIT=1     - Submit results to the online database
-#   QUICKSYNC_ID="mylab"   - Optional identifier for your submissions
+#   QUICKSYNC_NO_SUBMIT=1  - Skip uploading results for web verification
 #   QUICKSYNC_API_URL      - API endpoint (default: https://quicksync-api.ktz.me)
 #
 
@@ -335,9 +334,9 @@ main(){
   printf '%s\n' "${quicksyncstats_arr[@]}" | column -t -s '|'
   printf "\n"
 
-  # Submit results if enabled
-  if [ "${QUICKSYNC_SUBMIT}" = "1" ]; then
-    submit_results
+  # Upload results for web verification (default behavior)
+  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
+    upload_for_verification
   fi
 
   #Unset Array
@@ -347,66 +346,49 @@ main(){
 
 }
 
-submit_results(){
-  echo "Submitting results to ${API_URL}..."
-
-  # Build query parameters
-  local params=""
-  if [ -n "${QUICKSYNC_ID}" ]; then
-    params="?submitter_id=${QUICKSYNC_ID}"
-  fi
+upload_for_verification(){
+  echo "Uploading results for verification..."
 
   # Create temp file for submission data
   local tmpfile
   tmpfile=$(mktemp)
   printf '%s\n' "${quicksyncstats_arr[@]}" > "$tmpfile"
 
-  # Submit via curl
+  # Upload to pending endpoint
   local response
   response=$(curl -s -X POST \
     -H "Content-Type: text/plain" \
     --data-binary "@${tmpfile}" \
-    "${API_URL}/api/submit${params}" 2>/dev/null) || response=""
+    "${API_URL}/api/submit/pending" 2>/dev/null) || response=""
 
   rm -f "$tmpfile"
 
-  # Check if we need confirmation (duplicate submitter_id)
-  if echo "$response" | grep -q "requires_confirmation"; then
-    local existing_count
-    existing_count=$(echo "$response" | grep -o '"existing_count":[0-9]*' | cut -d: -f2)
+  # Extract token from response
+  local token
+  token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+  if [ -n "$token" ]; then
     echo ""
-    echo "Warning: ID '${QUICKSYNC_ID}' already has ${existing_count} submissions."
-    read -p "Continue anyway? (y/n): " confirm
-
-    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-      tmpfile=$(mktemp)
-      printf '%s\n' "${quicksyncstats_arr[@]}" > "$tmpfile"
-      response=$(curl -s -X POST \
-        -H "Content-Type: text/plain" \
-        --data-binary "@${tmpfile}" \
-        "${API_URL}/api/submit${params}&confirmed=true" 2>/dev/null) || response=""
-      rm -f "$tmpfile"
-    else
-      echo "Submission cancelled."
-      return
-    fi
-  fi
-
-  # Parse response - use simple pattern matching to avoid quoting issues
-  if echo "$response" | grep -q '"success":true'; then
-    local inserted
-    inserted=$(echo "$response" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')
-    echo "Successfully submitted ${inserted:-0} results!"
-    echo "View results at: https://quicksync.ktz.me"
+    echo "================================================================"
+    echo ""
+    echo "  Submit your results at:"
+    echo ""
+    echo "    https://quicksync.ktz.me/submit?token=${token}"
+    echo ""
+    echo "  Link expires in 24 hours."
+    echo ""
+    echo "================================================================"
   else
-    # Extract error message safely
+    echo ""
+    echo "Could not upload results for verification."
+    echo "Results displayed above can still be shared manually."
+    echo ""
+    # Show any error message
     local error_msg
     error_msg=$(echo "$response" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p')
-    if [ -z "$error_msg" ]; then
-      error_msg="Unknown error"
+    if [ -n "$error_msg" ]; then
+      echo "Error: $error_msg"
     fi
-    echo "Submission failed: $error_msg"
-    echo "You can still copy results manually to the GitHub Gist."
   fi
 }
 

@@ -4,6 +4,9 @@ export interface Env {
   TURSO_URL: string;
   TURSO_AUTH_TOKEN: string;
   ENVIRONMENT: string;
+  PENDING_SUBMISSIONS: KVNamespace;
+  TURNSTILE_SECRET: string;
+  ADMIN_PASSPHRASE: string;
 }
 
 let client: Client | null = null;

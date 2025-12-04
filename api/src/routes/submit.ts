@@ -1,6 +1,7 @@
 /**
  * POST /api/submit
- * Submit benchmark results from the benchmark script.
+ * Direct submission of benchmark results (requires admin passphrase).
+ * For normal submissions, use /api/submit/pending with web verification.
  */
 
 import { Hono } from 'hono';
@@ -12,9 +13,19 @@ const submit = new Hono<{ Bindings: Env }>();
 interface SubmitRequest {
   submitter_id?: string;
   confirmed?: boolean;
+  passphrase?: string;
 }
 
 submit.post('/', async (c) => {
+  // Check for admin passphrase (required for direct submission)
+  const passphrase = c.req.query('passphrase');
+  if (!passphrase || passphrase !== c.env.ADMIN_PASSPHRASE) {
+    return c.json({
+      success: false,
+      error: 'Direct submission requires passphrase. Use web verification at https://quicksync.ktz.me/submit instead.',
+    }, 403);
+  }
+
   const contentType = c.req.header('Content-Type') || '';
 
   let body: string;

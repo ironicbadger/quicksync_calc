@@ -1,0 +1,602 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const API_URL = import.meta.env.PUBLIC_API_URL || 'https://quicksync-api.ktz.me';
+// Turnstile site key (public)
+const TURNSTILE_SITE_KEY = '0x4AAAAAACE2xYy4W4qewY3u';
+---
+
+<Layout title="Submit Results - QuickSync Benchmarks">
+  <div class="container submit-page">
+    <!-- Loading State -->
+    <div id="loading-state" class="state-container">
+      <div class="loading-spinner"></div>
+      <p>Loading your benchmark results...</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="error-state" class="state-container" style="display: none;">
+      <div class="error-icon">!</div>
+      <h2 id="error-title">Submission Not Found</h2>
+      <p id="error-message">This submission link has expired or is invalid.</p>
+      <a href="/" class="btn btn-primary">View All Results</a>
+    </div>
+
+    <!-- Success State -->
+    <div id="success-state" class="state-container" style="display: none;">
+      <div class="success-icon">&#10003;</div>
+      <h2>Results Submitted!</h2>
+      <p id="success-message">Your benchmark results have been added to the database.</p>
+      <a href="/" class="btn btn-primary">View All Results</a>
+    </div>
+
+    <!-- Preview State -->
+    <div id="preview-state" style="display: none;">
+      <div class="page-header">
+        <h1>Submit Your Benchmark Results</h1>
+        <p class="subtitle">Review your results and complete verification to add them to the database.</p>
+      </div>
+
+      <!-- Results Preview -->
+      <div class="card results-preview">
+        <div class="card-header">
+          <h2>Your Benchmark Results</h2>
+          <span id="results-meta" class="results-meta"></span>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>Test</th>
+                <th>Bitrate</th>
+                <th>Time</th>
+                <th>FPS</th>
+                <th>Speed</th>
+                <th>Watts</th>
+                <th>Efficiency</th>
+              </tr>
+            </thead>
+            <tbody id="results-tbody">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Submitter ID -->
+      <div class="card submitter-section">
+        <h2>Submitter ID <span class="optional-label">(optional)</span></h2>
+        <p class="field-description">
+          Add an identifier to track your submissions. This helps you find your results later.
+        </p>
+        <input
+          type="text"
+          id="submitter-id"
+          placeholder="e.g., alexs_homelab, my_server"
+          class="text-input"
+          maxlength="50"
+        />
+      </div>
+
+      <!-- Turnstile CAPTCHA -->
+      <div class="card captcha-section">
+        <h2>Verification</h2>
+        <p class="field-description">Complete the verification below to submit your results.</p>
+        <div id="turnstile-container" class="turnstile-widget"></div>
+        <p id="captcha-error" class="captcha-error" style="display: none;">
+          Verification failed. Please try again.
+        </p>
+      </div>
+
+      <!-- Submit Button -->
+      <div class="submit-section">
+        <button id="submit-btn" class="btn btn-primary btn-large" disabled>
+          <span id="submit-text">Complete Verification Above</span>
+          <span id="submit-spinner" class="btn-spinner" style="display: none;"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Turnstile Script -->
+  <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+
+  <script is:inline define:vars={{ API_URL, TURNSTILE_SITE_KEY }}>
+    const state = {
+      token: null,
+      results: null,
+      turnstileToken: null,
+      isSubmitting: false,
+    };
+
+    // DOM elements
+    const loadingState = document.getElementById('loading-state');
+    const errorState = document.getElementById('error-state');
+    const successState = document.getElementById('success-state');
+    const previewState = document.getElementById('preview-state');
+    const errorTitle = document.getElementById('error-title');
+    const errorMessage = document.getElementById('error-message');
+    const successMessage = document.getElementById('success-message');
+    const resultsMeta = document.getElementById('results-meta');
+    const resultsTbody = document.getElementById('results-tbody');
+    const submitterInput = document.getElementById('submitter-id');
+    const submitBtn = document.getElementById('submit-btn');
+    const submitText = document.getElementById('submit-text');
+    const submitSpinner = document.getElementById('submit-spinner');
+    const captchaError = document.getElementById('captcha-error');
+
+    // Initialize
+    async function init() {
+      // Get token from URL
+      const params = new URLSearchParams(window.location.search);
+      state.token = params.get('token');
+
+      if (!state.token) {
+        showError('No Token Provided', 'Please use the link provided by the benchmark script.');
+        return;
+      }
+
+      try {
+        // Fetch pending submission
+        const response = await fetch(`${API_URL}/api/submit/pending/${state.token}`);
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          if (data.expired) {
+            showError('Submission Expired', 'This link has expired. Please run the benchmark again to get a new submission link.');
+          } else {
+            showError('Submission Not Found', data.error || 'Unable to load your submission.');
+          }
+          return;
+        }
+
+        state.results = data.results;
+        renderResults(data);
+        initTurnstile();
+        showState('preview');
+
+      } catch (err) {
+        console.error('Failed to fetch submission:', err);
+        showError('Connection Error', 'Unable to connect to the server. Please try again.');
+      }
+    }
+
+    function showState(stateName) {
+      loadingState.style.display = 'none';
+      errorState.style.display = 'none';
+      successState.style.display = 'none';
+      previewState.style.display = 'none';
+
+      switch (stateName) {
+        case 'loading':
+          loadingState.style.display = 'flex';
+          break;
+        case 'error':
+          errorState.style.display = 'flex';
+          break;
+        case 'success':
+          successState.style.display = 'flex';
+          break;
+        case 'preview':
+          previewState.style.display = 'block';
+          break;
+      }
+    }
+
+    function showError(title, message) {
+      errorTitle.textContent = title;
+      errorMessage.textContent = message;
+      showState('error');
+    }
+
+    function showSuccess(message) {
+      successMessage.textContent = message;
+      showState('success');
+    }
+
+    function renderResults(data) {
+      const results = data.results;
+      if (!results || results.length === 0) return;
+
+      // Set metadata
+      const cpu = results[0].cpu_raw.replace(/\(R\)|\(TM\)/g, '').replace(/CPU.*/, '').trim();
+      const arch = results[0].architecture || 'Unknown';
+      resultsMeta.innerHTML = `<strong>${cpu}</strong> &bull; ${arch} &bull; ${results.length} test${results.length !== 1 ? 's' : ''}`;
+
+      // Render table rows
+      resultsTbody.innerHTML = results.map(r => {
+        const testDisplay = formatTestName(r.test_name);
+        const speedDisplay = r.avg_speed ? `${r.avg_speed.toFixed(2)}x` : 'N/A';
+        const wattsDisplay = r.avg_watts ? `${r.avg_watts.toFixed(1)}W` : 'N/A';
+        const effDisplay = r.fps_per_watt ? r.fps_per_watt.toFixed(2) : 'N/A';
+
+        return `
+          <tr>
+            <td><span class="test-badge test-${getTestType(r.test_name)}">${testDisplay}</span></td>
+            <td>${r.bitrate_kbps} kb/s</td>
+            <td>${r.time_seconds.toFixed(1)}s</td>
+            <td class="metric-cell">${r.avg_fps.toFixed(1)}</td>
+            <td class="metric-cell">${speedDisplay}</td>
+            <td class="metric-cell">${wattsDisplay}</td>
+            <td class="metric-cell">${effDisplay}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function formatTestName(name) {
+      return name
+        .replace(/_/g, ' ')
+        .replace(/h264/i, 'H.264')
+        .replace(/hevc/i, 'HEVC')
+        .replace(/8bit/i, '8-bit')
+        .replace(/10bit/i, '10-bit')
+        .replace(/1080p/i, '1080p')
+        .replace(/4k/i, '4K');
+    }
+
+    function getTestType(name) {
+      if (name.includes('h264')) return 'h264';
+      if (name.includes('hevc')) return 'hevc';
+      return 'other';
+    }
+
+    function initTurnstile() {
+      if (typeof turnstile !== 'undefined') {
+        turnstile.render('#turnstile-container', {
+          sitekey: TURNSTILE_SITE_KEY,
+          theme: 'dark',
+          callback: function(token) {
+            state.turnstileToken = token;
+            captchaError.style.display = 'none';
+            updateSubmitButton();
+          },
+          'expired-callback': function() {
+            state.turnstileToken = null;
+            updateSubmitButton();
+          },
+          'error-callback': function() {
+            state.turnstileToken = null;
+            captchaError.style.display = 'block';
+            updateSubmitButton();
+          },
+        });
+      } else {
+        // Wait for Turnstile script to load
+        setTimeout(initTurnstile, 100);
+      }
+    }
+
+    function updateSubmitButton() {
+      if (state.turnstileToken && !state.isSubmitting) {
+        submitBtn.disabled = false;
+        submitText.textContent = 'Submit Results';
+      } else if (state.isSubmitting) {
+        submitBtn.disabled = true;
+        submitText.textContent = 'Submitting...';
+      } else {
+        submitBtn.disabled = true;
+        submitText.textContent = 'Complete Verification Above';
+      }
+    }
+
+    async function handleSubmit() {
+      if (!state.turnstileToken || state.isSubmitting) return;
+
+      state.isSubmitting = true;
+      updateSubmitButton();
+      submitSpinner.style.display = 'inline-block';
+
+      try {
+        const response = await fetch(`${API_URL}/api/submit/pending/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: state.token,
+            turnstile_token: state.turnstileToken,
+            submitter_id: submitterInput.value.trim() || null,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          if (data.expired) {
+            showError('Submission Expired', 'This link has expired. Please run the benchmark again.');
+          } else if (data.turnstile_errors) {
+            captchaError.style.display = 'block';
+            state.turnstileToken = null;
+            if (typeof turnstile !== 'undefined') {
+              turnstile.reset();
+            }
+          } else {
+            showError('Submission Failed', data.error || 'An error occurred while submitting.');
+          }
+          return;
+        }
+
+        showSuccess(data.message || `Successfully submitted ${data.inserted} result${data.inserted !== 1 ? 's' : ''}!`);
+
+      } catch (err) {
+        console.error('Submit error:', err);
+        showError('Connection Error', 'Unable to submit results. Please try again.');
+      } finally {
+        state.isSubmitting = false;
+        submitSpinner.style.display = 'none';
+        updateSubmitButton();
+      }
+    }
+
+    // Event listeners
+    submitBtn.addEventListener('click', handleSubmit);
+
+    // Start
+    init();
+  </script>
+
+  <style>
+    .submit-page {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .state-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 400px;
+      text-align: center;
+      gap: 1rem;
+    }
+
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--color-border);
+      border-top-color: var(--color-accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .error-icon {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      font-weight: bold;
+    }
+
+    .success-icon {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+    }
+
+    .state-container h2 {
+      font-size: 1.5rem;
+      margin: 0;
+    }
+
+    .state-container p {
+      color: var(--color-text-muted);
+      margin: 0;
+    }
+
+    .page-header {
+      margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+      font-size: 1.75rem;
+      margin: 0 0 0.5rem;
+    }
+
+    .subtitle {
+      color: var(--color-text-muted);
+      margin: 0;
+    }
+
+    .card {
+      margin-bottom: 1.5rem;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .card h2 {
+      font-size: 1.125rem;
+      margin: 0;
+    }
+
+    .results-meta {
+      font-size: 0.875rem;
+      color: var(--color-text-muted);
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    .results-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    .results-table th {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-text-muted);
+      border-bottom: 1px solid var(--color-border);
+      white-space: nowrap;
+    }
+
+    .results-table td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .results-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .metric-cell {
+      font-family: var(--font-mono);
+      text-align: right;
+    }
+
+    .test-badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .test-h264 {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+    }
+
+    .test-hevc {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+    }
+
+    .test-other {
+      background: rgba(148, 163, 184, 0.15);
+      color: #94a3b8;
+    }
+
+    .submitter-section h2,
+    .captcha-section h2 {
+      margin-bottom: 0.5rem;
+    }
+
+    .optional-label {
+      font-weight: 400;
+      font-size: 0.875rem;
+      color: var(--color-text-muted);
+    }
+
+    .field-description {
+      font-size: 0.875rem;
+      color: var(--color-text-muted);
+      margin: 0 0 1rem;
+    }
+
+    .text-input {
+      width: 100%;
+      max-width: 400px;
+      padding: 0.75rem 1rem;
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: 0.5rem;
+      color: var(--color-text);
+      font-size: 1rem;
+    }
+
+    .text-input:focus {
+      outline: none;
+      border-color: var(--color-accent);
+    }
+
+    .text-input::placeholder {
+      color: var(--color-text-muted);
+    }
+
+    .turnstile-widget {
+      min-height: 65px;
+    }
+
+    .captcha-error {
+      color: #ef4444;
+      font-size: 0.875rem;
+      margin-top: 0.5rem;
+    }
+
+    .submit-section {
+      margin-top: 2rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-primary {
+      background: var(--color-accent);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--color-accent-hover);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-large {
+      padding: 1rem 2rem;
+      font-size: 1.125rem;
+    }
+
+    .btn-spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @media (max-width: 600px) {
+      .results-table th,
+      .results-table td {
+        padding: 0.5rem 0.75rem;
+      }
+
+      .text-input {
+        max-width: none;
+      }
+    }
+  </style>
+</Layout>
