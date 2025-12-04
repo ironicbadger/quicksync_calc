@@ -1,59 +1,80 @@
+# Intel Quick Sync Video Benchmark
 
-Runs an ffmpeg benchmark to get Average Speed, FPS, and Watts
-===========================================
+Runs an FFmpeg benchmark to measure Average Speed, FPS, and Power consumption for Intel Quick Sync Video hardware encoding.
 
-The purpose of this script is to benchmark Intel Quick Sync Video performance in integrated iGPUs using a standardised video. More information and rationale is available [at blog.ktz.me](https://blog.ktz.me/i-need-your-help-with-intel-quick-sync-benchmarking/).
+## Overview
 
-Some conclusions and analysis has now been performed (May 2024), you can read about it [https://blog.ktz.me/the-best-media-server-cpu-in-the-world/](https://blog.ktz.me/the-best-media-server-cpu-in-the-world/).
+The purpose of this script is to benchmark Intel Quick Sync Video performance in integrated GPUs using standardized test videos. More information and rationale is available [at blog.ktz.me](https://blog.ktz.me/i-need-your-help-with-intel-quick-sync-benchmarking/).
 
-REQUIREMENTS
-------------
+Some conclusions and analysis has now been performed (May 2024), you can read about it [at blog.ktz.me](https://blog.ktz.me/the-best-media-server-cpu-in-the-world/).
 
-Requires Docker, Intel CPU w/ QuickSync, printf, and intel-gpu-tools package. Designed for Linux. Tested on Proxmox 8 and Ubuntu 22.04.
+## Interactive Results
 
-This should be run as root with no other applications/containers running that would utilize quicksync. This includes Desktop Environments.
+View and explore all benchmark results at: **[quicksync.ktz.me](https://quicksync.ktz.me)**
 
-RESULTS PLOT
-------------
+The website provides:
+- Interactive charts comparing performance across CPU generations
+- Filtering by CPU architecture, test type, power usage, and more
+- Efficiency metrics (FPS per Watt)
+- Searchable results table
+
+## Requirements
+
+- Docker
+- Intel CPU with Quick Sync support
+- `intel-gpu-tools` package (for power measurement)
+- `jq` (for JSON parsing)
+- `bc` (for calculations)
+
+Designed for Linux. Tested on Proxmox 8 and Ubuntu 22.04.
+
+This should be run as root with no other applications/containers running that would utilize Quick Sync. This includes Desktop Environments.
+
+## Results Plot
 
 Here's a plot of all results run to date from the results [Gist](https://gist.github.com/ironicbadger/5da9b321acbe6b6b53070437023b844d) - thanks to [u/Alicimo](https://github.com/Alicimo) for this. It's updated weekly via an automated action.
 
 ![results](plot.png)
 
 
-HOW TO USE
-------------
+## How to Use
 
 Full instructions available at [blog.ktz.me](https://blog.ktz.me/i-need-your-help-with-intel-quick-sync-benchmarking/).
 
-```
-# connect to the system you want the benchmark on (likely via ssh)
+```bash
+# Connect to the system you want to benchmark (likely via ssh)
 ssh user@hostname
 
-# install a couple of dependencies (script tested on proxmox 8 + ubuntu 22.04)
-apt install docker.io jq bc intel-gpu-tools git
+# Install dependencies (tested on Proxmox 8 + Ubuntu 22.04)
+apt install docker.io jq bc intel-gpu-tools git curl
 
-# clone the git repo with the script
+# Clone the repository
 git clone https://github.com/ironicbadger/quicksync_calc.git
-
-# change directory into the cloned repo
 cd quicksync_calc
 
-# download the test videos
+# Download the test videos
 ./video-download.sh
 
-# run the benchmark
+# Run the benchmark
 ./quicksync-benchmark.sh
-
-# copy your results into the following github gist as a comment
-https://gist.github.com/ironicbadger/5da9b321acbe6b6b53070437023b844d
 ```
 
+### Submitting Results
 
-Check out the results.
+You can automatically submit your results to the online database:
 
-SAMPLE OUTPUTS
-------------
+```bash
+# Run benchmark and submit results
+QUICKSYNC_SUBMIT=1 ./quicksync-benchmark.sh
+
+# Submit with your own identifier (for filtering your results later)
+QUICKSYNC_ID="my_homelab" QUICKSYNC_SUBMIT=1 ./quicksync-benchmark.sh
+```
+
+Alternatively, you can still manually copy results to the [GitHub Gist](https://gist.github.com/ironicbadger/5da9b321acbe6b6b53070437023b844d).
+
+## Sample Output
+
 ```bash
 CPU      TEST            FILE                        BITRATE     TIME      AVG_FPS  AVG_SPEED  AVG_WATTS
 i5-9500  h264_1080p_cpu  ribblehead_1080p_h264       18952 kb/s  59.665s   58.03    2.05x      N/A

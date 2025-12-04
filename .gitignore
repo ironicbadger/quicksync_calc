@@ -1,3 +1,6 @@
 venv
 #plot.png
 comments.pkl
+secrets.yaml
+node_modules/
+.wrangler/

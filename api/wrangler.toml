@@ -1,0 +1,23 @@
+name = "quicksync-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "production"
+
+# Rate limiting: 10 requests per minute per IP
+# [[unsafe.bindings]]
+# name = "RATE_LIMITER"
+# type = "ratelimit"
+# namespace_id = "quicksync-rate-limit"
+# simple = { limit = 10, period = 60 }
+
+# Custom domain route
+routes = [
+  { pattern = "quicksync-api.ktz.me", custom_domain = true }
+]
+
+# Secrets (set via wrangler secret put):
+# - TURSO_URL
+# - TURSO_AUTH_TOKEN
