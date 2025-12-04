@@ -1,0 +1,201 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="About - QuickSync Benchmarks">
+  <div class="container" style="max-width: 800px;">
+    <h1 style="margin-bottom: 2rem;">About QuickSync Benchmarks</h1>
+
+    <div class="card" style="margin-bottom: 2rem;">
+      <h2 style="margin-bottom: 1rem;">What is this?</h2>
+      <p>
+        This is a community-driven database of Intel Quick Sync Video benchmark results.
+        Quick Sync is Intel's hardware video encoding/decoding technology built into
+        most Intel CPUs since Sandy Bridge (2nd generation).
+      </p>
+      <p style="margin-top: 1rem;">
+        The benchmarks test hardware transcoding performance using FFmpeg inside a
+        Jellyfin container, measuring:
+      </p>
+      <ul style="margin-top: 0.5rem; margin-left: 1.5rem;">
+        <li><strong>FPS</strong> - Frames per second throughput</li>
+        <li><strong>Watts</strong> - Power consumption during encoding</li>
+        <li><strong>Speed</strong> - Real-time multiplier (2x = twice real-time)</li>
+        <li><strong>Efficiency</strong> - FPS per watt (calculated)</li>
+      </ul>
+    </div>
+
+    <div class="card" style="margin-bottom: 2rem;">
+      <h2 style="margin-bottom: 1rem;">Test Types</h2>
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr>
+            <th style="text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Test</th>
+            <th style="text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);"><code>h264_1080p_cpu</code></td>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);">CPU-only H.264 encode (baseline comparison)</td>
+          </tr>
+          <tr>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);"><code>h264_1080p</code></td>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Quick Sync H.264 encode at 1080p</td>
+          </tr>
+          <tr>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);"><code>h264_4k</code></td>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Quick Sync H.264 encode at 4K</td>
+          </tr>
+          <tr>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);"><code>hevc_8bit</code></td>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Quick Sync HEVC 8-bit encode at 1080p</td>
+          </tr>
+          <tr>
+            <td style="padding: 0.5rem;"><code>hevc_4k_10bit</code></td>
+            <td style="padding: 0.5rem;">Quick Sync HEVC 10-bit encode at 4K</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-bottom: 2rem;">
+      <h2 style="margin-bottom: 1rem;">Running the Benchmark</h2>
+      <p>To contribute your own results:</p>
+
+      <h3 style="margin-top: 1rem; font-size: 1rem;">1. Clone the repository</h3>
+      <pre style="background: var(--color-bg); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-top: 0.5rem;"><code>git clone https://github.com/ironicbadger/quicksync_calc.git
+cd quicksync_calc</code></pre>
+
+      <h3 style="margin-top: 1rem; font-size: 1rem;">2. Run the benchmark</h3>
+      <pre style="background: var(--color-bg); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-top: 0.5rem;"><code># Run benchmark only
+./quicksync-benchmark.sh
+
+# Run and submit results (optional)
+QUICKSYNC_SUBMIT=1 ./quicksync-benchmark.sh
+
+# Run with your identifier (optional)
+QUICKSYNC_ID="my_homelab" QUICKSYNC_SUBMIT=1 ./quicksync-benchmark.sh</code></pre>
+
+      <h3 style="margin-top: 1rem; font-size: 1rem;">Requirements</h3>
+      <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+        <li>Docker</li>
+        <li>Intel CPU with Quick Sync support</li>
+        <li><code>intel-gpu-tools</code> package (for power measurement)</li>
+        <li><code>jq</code> (for JSON parsing)</li>
+      </ul>
+    </div>
+
+    <div class="card" style="margin-bottom: 2rem;">
+      <h2 style="margin-bottom: 1rem;">CPU Score Methodology</h2>
+      <p>
+        Each CPU receives an overall score (0-100) calculated from three weighted components:
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-top: 1rem; margin-bottom: 1rem;">
+        <thead>
+          <tr>
+            <th style="text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Component</th>
+            <th style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Weight</th>
+            <th style="text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);"><strong>Performance</strong></td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">40%</td>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Percentile rank of average FPS compared to all CPUs for each test type</td>
+          </tr>
+          <tr>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);"><strong>Efficiency</strong></td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">35%</td>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Percentile rank of FPS per watt (energy efficiency)</td>
+          </tr>
+          <tr>
+            <td style="padding: 0.5rem;"><strong>Codec Support</strong></td>
+            <td style="text-align: center; padding: 0.5rem;">25%</td>
+            <td style="padding: 0.5rem;">Percentage of available test types the CPU has completed</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top: 1rem;">
+        <strong>Formula:</strong> <code>Score = (Performance × 0.40) + (Efficiency × 0.35) + (Codec Support × 0.25)</code>
+      </p>
+
+      <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem; font-size: 1rem;">Score Interpretation</h3>
+      <ul style="margin-left: 1.5rem;">
+        <li><span style="color: #22c55e; font-weight: 600;">90-100</span> - Excellent: Top tier performance and efficiency</li>
+        <li><span style="color: #22c55e; font-weight: 600;">70-89</span> - Good: Above average across most metrics</li>
+        <li><span style="color: #eab308; font-weight: 600;">50-69</span> - Average: Typical performance for its generation</li>
+        <li><span style="color: #eab308; font-weight: 600;">30-49</span> - Below Average: Limited in some areas</li>
+        <li><span style="color: #ef4444; font-weight: 600;">0-29</span> - Limited: Older or constrained hardware</li>
+      </ul>
+
+      <p style="margin-top: 1rem; font-size: 0.875rem; color: var(--color-text-muted);">
+        <strong>Note:</strong> Scores are calculated dynamically and updated automatically as new benchmark results are submitted. Percentile rankings are relative to all CPUs in the database.
+      </p>
+    </div>
+
+    <div class="card" style="margin-bottom: 2rem;">
+      <h2 style="margin-bottom: 1rem;">Hardware Codec Support</h2>
+      <p>Not all Intel CPUs support all codecs. Here's a quick reference:</p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.875rem;">
+        <thead>
+          <tr>
+            <th style="text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Architecture</th>
+            <th style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">H.264</th>
+            <th style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">HEVC 8-bit</th>
+            <th style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">HEVC 10-bit</th>
+            <th style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">AV1</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Kaby Lake - Comet Lake (7-10th)</td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">✓</td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">✓</td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">-</td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">-</td>
+          </tr>
+          <tr>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Tiger Lake - Raptor Lake (11-14th)</td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">✓</td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">✓</td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">✓</td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">decode only</td>
+          </tr>
+          <tr>
+            <td style="padding: 0.5rem; border-bottom: 1px solid var(--color-border);">Arc GPUs</td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">✓</td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">✓</td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">✓</td>
+            <td style="text-align: center; padding: 0.5rem; border-bottom: 1px solid var(--color-border);">✓</td>
+          </tr>
+          <tr>
+            <td style="padding: 0.5rem;">Meteor Lake, Arrow Lake, Lunar Lake (Ultra)</td>
+            <td style="text-align: center; padding: 0.5rem;">✓</td>
+            <td style="text-align: center; padding: 0.5rem;">✓</td>
+            <td style="text-align: center; padding: 0.5rem;">✓</td>
+            <td style="text-align: center; padding: 0.5rem;">✓</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom: 1rem;">Privacy</h2>
+      <p>This project collects only:</p>
+      <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+        <li><strong>CPU model</strong> - Hardware information, not personally identifiable</li>
+        <li><strong>Benchmark metrics</strong> - FPS, watts, speed</li>
+        <li><strong>Submitter ID</strong> (optional) - Your chosen identifier for filtering your results</li>
+      </ul>
+      <p style="margin-top: 1rem;">
+        IP addresses are used transiently for rate limiting only and are never stored.
+        No cookies, no tracking, no personal data.
+      </p>
+    </div>
+  </div>
+</Layout>
