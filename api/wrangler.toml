@@ -18,6 +18,14 @@ routes = [
   { pattern = "quicksync-api.ktz.me", custom_domain = true }
 ]
 
+# KV namespace for pending submissions (24h TTL)
+# Create with: wrangler kv:namespace create PENDING_SUBMISSIONS
+[[kv_namespaces]]
+binding = "PENDING_SUBMISSIONS"
+id = "a55f255136bd456c8d257f12add2c807"
+
 # Secrets (set via wrangler secret put):
 # - TURSO_URL
 # - TURSO_AUTH_TOKEN
+# - TURNSTILE_SECRET   - Cloudflare Turnstile secret key for CAPTCHA validation
+# - ADMIN_PASSPHRASE   - Required for direct /api/submit access (bypasses web verification)

@@ -9,6 +9,7 @@ import { logger } from 'hono/logger';
 import { Env } from './lib/db';
 
 import submit from './routes/submit';
+import submitPending from './routes/submit-pending';
 import submitConcurrency from './routes/submit-concurrency';
 import results from './routes/results';
 import stats from './routes/stats';
@@ -19,7 +20,18 @@ const app = new Hono<{ Bindings: Env }>();
 // Middleware
 app.use('*', logger());
 app.use('*', cors({
-  origin: ['https://quicksync.ktz.me', 'http://localhost:4321', 'http://localhost:3000'],
+  origin: (origin) => {
+    // Allow production, localhost, and Pages preview URLs
+    const allowed = [
+      'https://quicksync.ktz.me',
+      'http://localhost:4321',
+      'http://localhost:3000',
+    ];
+    if (allowed.includes(origin)) return origin;
+    // Allow Cloudflare Pages preview URLs
+    if (origin?.endsWith('.quicksync-web.pages.dev')) return origin;
+    return 'https://quicksync.ktz.me';
+  },
   allowMethods: ['GET', 'POST', 'OPTIONS'],
   allowHeaders: ['Content-Type'],
   maxAge: 86400,
@@ -31,7 +43,10 @@ app.get('/', (c) => {
     name: 'QuickSync Benchmark API',
     version: '1.0.0',
     endpoints: {
-      'POST /api/submit': 'Submit benchmark results',
+      'POST /api/submit': 'Submit benchmark results (requires passphrase)',
+      'POST /api/submit/pending': 'Upload results for web verification',
+      'GET /api/submit/pending/:token': 'Get pending results for preview',
+      'POST /api/submit/pending/confirm': 'Confirm submission with Turnstile',
       'POST /api/submit-concurrency': 'Submit concurrency benchmark results',
       'GET /api/results': 'Query benchmark results',
       'GET /api/results/filters': 'Get available filter values',
@@ -49,6 +64,7 @@ app.get('/health', (c) => {
 });
 
 // Mount routes
+app.route('/api/submit/pending', submitPending);
 app.route('/api/submit', submit);
 app.route('/api/submit-concurrency', submitConcurrency);
 app.route('/api/results', results);
