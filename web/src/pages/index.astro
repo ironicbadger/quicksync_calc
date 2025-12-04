@@ -1464,28 +1464,55 @@ QUICKSYNC_SUBMIT=1 ./quicksync-benchmark.sh
       params.set('submitter_id', state.filters.submitter[0]); // Single submitter filter
     }
 
-    params.set('sort', state.sort.column);
-    params.set('order', state.sort.order);
-    params.set('limit', state.pagination.limit);
-    params.set('offset', state.pagination.offset);
+    // Score sorting is done client-side since scores aren't in the database
+    const sortingByScore = state.sort.column === 'score';
+    if (sortingByScore) {
+      // For score sorting, fetch more results to sort client-side, then paginate
+      params.set('sort', 'submitted_at');
+      params.set('order', 'desc');
+      params.set('limit', '1000'); // Fetch more for client-side sorting
+      params.set('offset', '0');
+    } else {
+      params.set('sort', state.sort.column);
+      params.set('order', state.sort.order);
+      params.set('limit', state.pagination.limit);
+      params.set('offset', state.pagination.offset);
+    }
 
     try {
       const res = await fetch(`${API_URL}/api/results?${params}`);
       const data = await res.json();
 
       if (data.success) {
-        renderResults(data.results, data.total, state.cpuScores);
+        let results = data.results;
+        let total = data.total;
+
+        // Client-side score sorting
+        if (sortingByScore) {
+          results = results.sort((a, b) => {
+            const scoreA = state.cpuScores[a.cpu_raw] ?? -1;
+            const scoreB = state.cpuScores[b.cpu_raw] ?? -1;
+            return state.sort.order === 'desc' ? scoreB - scoreA : scoreA - scoreB;
+          });
+
+          // Apply pagination after sorting
+          const start = state.pagination.offset;
+          const end = start + state.pagination.limit;
+          results = results.slice(start, end);
+        }
+
+        renderResults(results, total, state.cpuScores);
 
         // Update filtered count
-        document.getElementById('filtered-results').textContent = data.total.toLocaleString();
+        document.getElementById('filtered-results').textContent = total.toLocaleString();
 
         // Update pagination
         const currentPage = Math.floor(state.pagination.offset / state.pagination.limit) + 1;
-        const totalPages = Math.ceil(data.total / state.pagination.limit);
+        const totalPages = Math.ceil(total / state.pagination.limit);
 
         document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages}`;
         document.getElementById('prev-page').disabled = state.pagination.offset === 0;
-        document.getElementById('next-page').disabled = state.pagination.offset + state.pagination.limit >= data.total;
+        document.getElementById('next-page').disabled = state.pagination.offset + state.pagination.limit >= total;
       }
     } catch (e) {
       console.error('Failed to fetch results:', e);
