@@ -5,3 +5,12 @@ secrets.yaml
 node_modules/
 .wrangler/
 .dev.vars
+
+# Web build artifacts
+web/dist/
+web/.astro/
+
+# Environment files
+web/.env
+web/.env.local
+web/.env.production
