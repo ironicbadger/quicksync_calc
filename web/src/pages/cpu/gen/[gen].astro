@@ -2,14 +2,30 @@
 /**
  * CPU Generation Detail Page
  * Dynamic route: /cpu/gen/8, /cpu/gen/12, /cpu/gen/ultra-1, etc.
+ *
+ * Uses getStaticPaths() for static site generation (SSG).
+ * All valid generation pages are pre-rendered at build time.
  */
-export const prerender = false;
 
 import Layout from '../../../layouts/Layout.astro';
 import TimelineSlider from '../../../components/generation/TimelineSlider.astro';
 import CodecMatrix from '../../../components/generation/CodecMatrix.astro';
 import ArchitectureCard from '../../../components/generation/ArchitectureCard.astro';
 import CpuModelTable from '../../../components/generation/CpuModelTable.astro';
+
+// Define all valid generations for static path generation
+export function getStaticPaths() {
+  // All supported CPU generations - numeric and named
+  const generations = [
+    '6', '7', '8', '9', '10', '11', '12', '13', '14',
+    'ultra-1', 'ultra-2',
+    'arc'
+  ];
+
+  return generations.map(gen => ({
+    params: { gen }
+  }));
+}
 
 // Get the generation parameter from the URL
 const { gen } = Astro.params;
