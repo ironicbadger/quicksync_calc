@@ -1162,7 +1162,7 @@ cd quicksync_calc
           success: arcData.success,
           generations: [],
           baseline_overall: arcData.baseline_overall,
-          baseline_by_test: [],
+          baseline_by_test: arcData.baseline_by_test || [],
           data: combinedArc ? [combinedArc] : [],
           all_tests: arcData.all_tests || []
         };

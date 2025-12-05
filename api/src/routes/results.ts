@@ -521,6 +521,7 @@ results.get('/architecture-stats', async (c) => {
         SELECT
           test_name,
           ROUND(AVG(avg_fps), 1) as avg_fps,
+          ROUND(AVG(CASE WHEN avg_watts > 0 AND avg_watts < 50 THEN avg_watts ELSE NULL END), 1) as avg_watts,
           ROUND(AVG(CASE WHEN fps_per_watt > 0 THEN fps_per_watt ELSE NULL END), 2) as avg_fps_per_watt
         FROM benchmark_results
         WHERE vendor = ? AND cpu_generation = ?
@@ -531,10 +532,11 @@ results.get('/architecture-stats', async (c) => {
   ]);
 
   const baselineOverall = baselineOverallResult.rows[0] || {};
-  const baselineByTest: Record<string, { avg_fps: number; fps_per_watt: number | null }> = {};
+  const baselineByTest: Record<string, { avg_fps: number; avg_watts: number | null; fps_per_watt: number | null }> = {};
   for (const row of baselineTestResult.rows) {
     baselineByTest[row.test_name as string] = {
       avg_fps: (row.avg_fps as number) || 0,
+      avg_watts: row.avg_watts as number | null,
       fps_per_watt: row.avg_fps_per_watt as number | null,
     };
   }
@@ -609,6 +611,14 @@ results.get('/architecture-stats', async (c) => {
     };
   });
 
+  // Build baseline_by_test array
+  const baselineByTestArray = allTests.map(testName => ({
+    test_name: testName,
+    avg_fps: baselineByTest[testName]?.avg_fps || 0,
+    avg_watts: baselineByTest[testName]?.avg_watts || null,
+    fps_per_watt: baselineByTest[testName]?.fps_per_watt || null,
+  }));
+
   return c.json({
     success: true,
     architectures,
@@ -618,6 +628,7 @@ results.get('/architecture-stats', async (c) => {
       avg_watts: baselineOverall.overall_avg_watts || null,
       fps_per_watt: baselineOverall.overall_fps_per_watt || null,
     },
+    baseline_by_test: baselineByTestArray,
     data: architecturesData,
     all_tests: allTests,
   });
