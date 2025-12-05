@@ -332,14 +332,20 @@ Data sourced from community submissions &bull;
     14: { bg: 'rgba(168, 85, 247, 0.8)', border: 'rgb(168, 85, 247)' },   // Purple
   };
 
-  // Fetch and display generation statistics (when generations are filtered)
+  // Fetch and display generation statistics (when generations or Arc architectures are filtered)
   async function fetchGenerationStats() {
     const statsContainer = document.getElementById('generation-stats');
     const statsSummary = document.getElementById('gen-stats-summary');
     const statsTitle = document.getElementById('gen-stats-title');
     const statsSubtitle = document.getElementById('gen-stats-subtitle');
-    // Show when one or more generations are selected
-    if (state.filters.generation.length === 0) {
+
+    // Check for Arc architectures (Alchemist/Battlemage)
+    const arcArchitectures = state.filters.architecture.filter(a => a === 'Alchemist' || a === 'Battlemage');
+    const hasArcFilter = arcArchitectures.length > 0;
+    const hasGenFilter = state.filters.generation.length > 0;
+
+    // Show when generations OR Arc architectures are selected
+    if (!hasGenFilter && !hasArcFilter) {
       statsContainer.style.display = 'none';
       // Destroy charts if exist
       if (window.genFpsChart) { window.genFpsChart.destroy(); window.genFpsChart = null; }
@@ -348,11 +354,46 @@ Data sourced from community submissions &bull;
       return;
     }
 
-    const generations = state.filters.generation.join(',');
-
     try {
-      const res = await fetch(`${API_URL}/api/results/generation-stats?generation=${generations}`);
-      const data = await res.json();
+      let data;
+
+      // Fetch either generation stats or architecture stats
+      if (hasArcFilter && !hasGenFilter) {
+        // Only Arc selected - use architecture-stats endpoint
+        const res = await fetch(`${API_URL}/api/results/architecture-stats?architecture=${arcArchitectures.join(',')}`);
+        data = await res.json();
+        // Transform architecture data to match generation data structure
+        if (data.success && data.data) {
+          data.data = data.data.map(d => ({ ...d, generation: 'Arc', isArc: true }));
+        }
+      } else if (hasGenFilter && !hasArcFilter) {
+        // Only generations selected - use generation-stats endpoint
+        const generations = state.filters.generation.join(',');
+        const res = await fetch(`${API_URL}/api/results/generation-stats?generation=${generations}`);
+        data = await res.json();
+      } else {
+        // Both selected - fetch both and combine
+        const [genRes, arcRes] = await Promise.all([
+          fetch(`${API_URL}/api/results/generation-stats?generation=${state.filters.generation.join(',')}`),
+          fetch(`${API_URL}/api/results/architecture-stats?architecture=${arcArchitectures.join(',')}`)
+        ]);
+        const genData = await genRes.json();
+        const arcData = await arcRes.json();
+
+        // Combine the data - Arc uses generation=-1 as a placeholder
+        data = {
+          success: genData.success && arcData.success,
+          generations: genData.generations || [],
+          architectures: arcData.architectures || [],
+          baseline_overall: genData.baseline_overall || arcData.baseline_overall,
+          baseline_by_test: genData.baseline_by_test || [],
+          data: [
+            ...(genData.data || []),
+            ...(arcData.data || []).map(d => ({ ...d, generation: 'Arc', isArc: true }))
+          ],
+          all_tests: [...new Set([...(genData.all_tests || []), ...(arcData.all_tests || [])])].sort()
+        };
+      }
 
       if (!data.success || !data.data || data.data.length === 0) {
         statsContainer.style.display = 'none';
@@ -361,16 +402,28 @@ Data sourced from community submissions &bull;
 
       statsContainer.style.display = 'block';
 
-      // Build title based on number of generations
-      const genList = data.generations.map(g => `${g}th`).join(', ');
-      statsTitle.textContent = data.generations.length === 1
-        ? `${genList} Gen vs 8th Gen Baseline`
-        : `${genList} Gen Comparison`;
+      // Build title based on what's selected
+      const hasGenerations = data.generations && data.generations.length > 0;
+      const hasArchitectures = data.data.some(d => d.isArc);
+
+      let titleText = '';
+      if (hasGenerations && !hasArchitectures) {
+        const genList = data.generations.map(g => `${g}th`).join(', ');
+        titleText = data.generations.length === 1
+          ? `${genList} Gen vs 8th Gen Baseline`
+          : `${genList} Gen Comparison`;
+      } else if (!hasGenerations && hasArchitectures) {
+        titleText = 'Intel Arc vs 8th Gen Baseline';
+      } else {
+        const genList = data.generations.map(g => `${g}th`).join(', ');
+        titleText = `${genList} Gen + Arc Comparison`;
+      }
+      statsTitle.textContent = titleText;
 
       // Build subtitle with total results
       const totalResults = data.data.reduce((sum, g) => sum + g.overall.total_results, 0);
       const totalCpus = data.data.reduce((sum, g) => sum + g.overall.unique_cpus, 0);
-      statsSubtitle.textContent = `${totalResults} results from ${totalCpus} unique CPUs`;
+      statsSubtitle.textContent = `${totalResults} results from ${totalCpus} unique ${hasArchitectures && !hasGenerations ? 'GPUs' : 'CPUs'}`;
 
       // Build comparison table - cleaner presentation of all metrics
       const baselineFps = data.baseline_overall?.avg_fps || 0;
@@ -399,15 +452,19 @@ Data sourced from community submissions &bull;
           <tbody>
       `;
 
-      // Add row for each selected generation
+      // Add row for each selected generation/architecture
       for (const genData of data.data) {
-        const color = genColors[genData.generation]?.border || '#3b82f6';
+        const isArc = genData.isArc;
+        const color = isArc ? '#10b981' : (genColors[genData.generation]?.border || '#3b82f6'); // Green for Arc
+        const displayName = isArc ? genData.architecture : `${genData.generation}th Gen`;
+        const archLabel = isArc ? '' : (genData.architecture ? `<span class="gen-arch">${genData.architecture}</span>` : '');
+
         summaryHtml += `
           <tr class="gen-row" style="--gen-color: ${color}">
             <td class="gen-name">
               <span class="gen-indicator" style="background: ${color}"></span>
-              <strong>${genData.generation}th Gen</strong>
-              ${genData.architecture ? `<span class="gen-arch">${genData.architecture}</span>` : ''}
+              <strong>${displayName}</strong>
+              ${archLabel}
             </td>
             <td class="gen-metric">
               <span class="gen-value">${genData.overall.avg_fps?.toFixed(1) || '-'}</span>
@@ -422,14 +479,14 @@ Data sourced from community submissions &bull;
               ${formatDiff(genData.overall.fps_per_watt, baselineEff)}
             </td>
             <td class="gen-metric-small">
-              ${genData.overall.total_results} <span class="gen-muted">(${genData.overall.unique_cpus} CPUs)</span>
+              ${genData.overall.total_results} <span class="gen-muted">(${genData.overall.unique_cpus} ${isArc ? 'GPUs' : 'CPUs'})</span>
             </td>
           </tr>
         `;
       }
 
       // Add baseline row if 8th gen isn't already selected
-      if (!data.generations.includes(8)) {
+      if (!data.generations || !data.generations.includes(8)) {
         summaryHtml += `
           <tr class="gen-row baseline-row">
             <td class="gen-name">
@@ -464,9 +521,14 @@ Data sourced from community submissions &bull;
       // Helper to build datasets for a given metric
       const buildDatasets = (metric) => {
         const datasets = data.data.map(genData => {
-          const colors = genColors[genData.generation] || { bg: 'rgba(59, 130, 246, 0.7)', border: 'rgb(59, 130, 246)' };
+          const isArc = genData.isArc;
+          const colors = isArc
+            ? { bg: 'rgba(16, 185, 129, 0.7)', border: 'rgb(16, 185, 129)' } // Green for Arc
+            : (genColors[genData.generation] || { bg: 'rgba(59, 130, 246, 0.7)', border: 'rgb(59, 130, 246)' });
+          const label = isArc ? genData.architecture : `${genData.generation}th Gen`;
+
           return {
-            label: `${genData.generation}th Gen`,
+            label,
             data: testNames.map(testName => {
               const testInfo = genData.by_test.find(t => t.test_name === testName);
               return testInfo?.[metric] || 0;
@@ -478,11 +540,11 @@ Data sourced from community submissions &bull;
         });
 
         // Add baseline dataset if 8th gen isn't already selected
-        if (!data.generations.includes(8)) {
+        if (!data.generations || !data.generations.includes(8)) {
           datasets.push({
             label: '8th Gen (Baseline)',
             data: testNames.map(testName => {
-              const testInfo = data.baseline_by_test.find(t => t.test_name === testName);
+              const testInfo = data.baseline_by_test?.find(t => t.test_name === testName);
               return testInfo?.[metric] || 0;
             }),
             backgroundColor: genColors[8].bg,

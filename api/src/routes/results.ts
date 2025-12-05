@@ -447,6 +447,182 @@ results.get('/generation-stats', async (c) => {
   });
 });
 
+// Get aggregated statistics for specific architectures (e.g., Arc GPUs)
+results.get('/architecture-stats', async (c) => {
+  const db = getDb(c.env);
+  const vendor = c.req.query('vendor') || 'intel';
+  const archParam = c.req.query('architecture'); // Can be "Alchemist" or "Alchemist,Battlemage"
+  const baselineGen = 8; // Compare against 8th Gen as baseline
+
+  if (!archParam) {
+    return c.json({ success: false, error: 'architecture parameter required' }, 400);
+  }
+
+  // Parse multiple architectures
+  const architectures = archParam.split(',').map(a => a.trim()).filter(a => a);
+  if (architectures.length === 0) {
+    return c.json({ success: false, error: 'Invalid architecture names' }, 400);
+  }
+
+  const archPlaceholders = architectures.map(() => '?').join(',');
+
+  const [statsResult, overallResult, baselineOverallResult, baselineTestResult] = await Promise.all([
+    // Stats per architecture per test type
+    db.execute({
+      sql: `
+        SELECT
+          architecture,
+          test_name,
+          COUNT(*) as result_count,
+          ROUND(AVG(avg_fps), 1) as avg_fps,
+          ROUND(MIN(avg_fps), 1) as min_fps,
+          ROUND(MAX(avg_fps), 1) as max_fps,
+          ROUND(AVG(CASE WHEN avg_watts > 0 THEN avg_watts ELSE NULL END), 1) as avg_watts,
+          ROUND(AVG(CASE WHEN fps_per_watt > 0 THEN fps_per_watt ELSE NULL END), 2) as avg_fps_per_watt,
+          ROUND(AVG(avg_speed), 2) as avg_speed
+        FROM benchmark_results
+        WHERE vendor = ? AND architecture IN (${archPlaceholders})
+        GROUP BY architecture, test_name
+        ORDER BY architecture, test_name
+      `,
+      args: [vendor, ...architectures],
+    }),
+    // Overall stats per architecture
+    db.execute({
+      sql: `
+        SELECT
+          architecture,
+          COUNT(*) as total_results,
+          COUNT(DISTINCT cpu_raw) as unique_cpus,
+          ROUND(AVG(avg_fps), 1) as overall_avg_fps,
+          ROUND(AVG(CASE WHEN avg_watts > 0 THEN avg_watts ELSE NULL END), 1) as overall_avg_watts,
+          ROUND(AVG(CASE WHEN fps_per_watt > 0 THEN fps_per_watt ELSE NULL END), 2) as overall_fps_per_watt
+        FROM benchmark_results
+        WHERE vendor = ? AND architecture IN (${archPlaceholders})
+        GROUP BY architecture
+      `,
+      args: [vendor, ...architectures],
+    }),
+    // Baseline overall stats (8th gen)
+    db.execute({
+      sql: `
+        SELECT
+          ROUND(AVG(avg_fps), 1) as overall_avg_fps,
+          ROUND(AVG(CASE WHEN avg_watts > 0 THEN avg_watts ELSE NULL END), 1) as overall_avg_watts,
+          ROUND(AVG(CASE WHEN fps_per_watt > 0 THEN fps_per_watt ELSE NULL END), 2) as overall_fps_per_watt
+        FROM benchmark_results
+        WHERE vendor = ? AND cpu_generation = ?
+      `,
+      args: [vendor, baselineGen],
+    }),
+    // Baseline test stats (8th gen)
+    db.execute({
+      sql: `
+        SELECT
+          test_name,
+          ROUND(AVG(avg_fps), 1) as avg_fps,
+          ROUND(AVG(CASE WHEN fps_per_watt > 0 THEN fps_per_watt ELSE NULL END), 2) as avg_fps_per_watt
+        FROM benchmark_results
+        WHERE vendor = ? AND cpu_generation = ?
+        GROUP BY test_name
+      `,
+      args: [vendor, baselineGen],
+    }),
+  ]);
+
+  const baselineOverall = baselineOverallResult.rows[0] || {};
+  const baselineByTest: Record<string, { avg_fps: number; fps_per_watt: number | null }> = {};
+  for (const row of baselineTestResult.rows) {
+    baselineByTest[row.test_name as string] = {
+      avg_fps: (row.avg_fps as number) || 0,
+      fps_per_watt: row.avg_fps_per_watt as number | null,
+    };
+  }
+
+  // Build lookup structures
+  const overallByArch: Record<string, {
+    total_results: number;
+    unique_cpus: number;
+    avg_fps: number;
+    avg_watts: number | null;
+    fps_per_watt: number | null;
+  }> = {};
+
+  for (const row of overallResult.rows) {
+    const arch = row.architecture as string;
+    overallByArch[arch] = {
+      total_results: (row.total_results as number) || 0,
+      unique_cpus: (row.unique_cpus as number) || 0,
+      avg_fps: (row.overall_avg_fps as number) || 0,
+      avg_watts: row.overall_avg_watts as number | null,
+      fps_per_watt: row.overall_fps_per_watt as number | null,
+    };
+  }
+
+  // Build test data by architecture
+  const byTestByArch: Record<string, Record<string, {
+    result_count: number;
+    avg_fps: number;
+    min_fps: number;
+    max_fps: number;
+    avg_watts: number | null;
+    fps_per_watt: number | null;
+    avg_speed: number | null;
+  }>> = {};
+
+  for (const row of statsResult.rows) {
+    const arch = row.architecture as string;
+    const testName = row.test_name as string;
+
+    if (!byTestByArch[arch]) {
+      byTestByArch[arch] = {};
+    }
+
+    byTestByArch[arch][testName] = {
+      result_count: row.result_count as number,
+      avg_fps: (row.avg_fps as number) || 0,
+      min_fps: (row.min_fps as number) || 0,
+      max_fps: (row.max_fps as number) || 0,
+      avg_watts: row.avg_watts as number | null,
+      fps_per_watt: row.avg_fps_per_watt as number | null,
+      avg_speed: row.avg_speed as number | null,
+    };
+  }
+
+  // Get all unique test names
+  const allTests = [...new Set(statsResult.rows.map(r => r.test_name as string))].sort();
+
+  // Build response for each architecture
+  const architecturesData = architectures.map(arch => {
+    const overall = overallByArch[arch] || { total_results: 0, unique_cpus: 0, avg_fps: 0, avg_watts: null, fps_per_watt: null };
+    const testData = byTestByArch[arch] || {};
+
+    return {
+      architecture: arch,
+      overall,
+      by_test: allTests.map(testName => ({
+        test_name: testName,
+        ...(testData[testName] || { result_count: 0, avg_fps: 0, min_fps: 0, max_fps: 0, avg_watts: null, fps_per_watt: null, avg_speed: null }),
+        baseline_fps: baselineByTest[testName]?.avg_fps || null,
+        baseline_fps_per_watt: baselineByTest[testName]?.fps_per_watt || null,
+      })),
+    };
+  });
+
+  return c.json({
+    success: true,
+    architectures,
+    baseline_generation: baselineGen,
+    baseline_overall: {
+      avg_fps: baselineOverall.overall_avg_fps || 0,
+      avg_watts: baselineOverall.overall_avg_watts || null,
+      fps_per_watt: baselineOverall.overall_fps_per_watt || null,
+    },
+    data: architecturesData,
+    all_tests: allTests,
+  });
+});
+
 // Get aggregated statistics for specific CPUs
 results.get('/cpu-stats', async (c) => {
   const db = getDb(c.env);
