@@ -737,6 +737,18 @@ cd quicksync_calc
   .cpu-stats-panel .gen-stats-header h3 {
     color: #22c55e;
   }
+
+  /* CPU Links */
+  .cpu-link {
+    color: var(--color-text);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+
+  .cpu-link:hover {
+    color: var(--color-accent);
+    text-decoration: underline;
+  }
 </style>
 
 <script define:vars={{ API_URL }}>
@@ -979,6 +991,37 @@ cd quicksync_calc
       .replace(/\s*\d{1,2}th Gen\s*/gi, '') // Remove "13th Gen" etc
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  // Generate a link to the CPU's generation page
+  function getCpuLink(cpuRaw, architecture, generation) {
+    // Arc GPUs link to Arc pages
+    if (architecture && (architecture.includes('Arc') || architecture === 'Alchemist' || architecture === 'Battlemage')) {
+      return '/gpu/arc/all';
+    }
+    // Meteor Lake links to Ultra Series 1
+    if (architecture === 'Meteor Lake') {
+      return '/cpu/gen/ultra-1';
+    }
+    // Arrow Lake or Lunar Lake links to Ultra Series 2
+    if (architecture === 'Arrow Lake' || architecture === 'Lunar Lake') {
+      return '/cpu/gen/ultra-2';
+    }
+    // Standard generations 2-14
+    if (generation && generation >= 2 && generation <= 14) {
+      return `/cpu/gen/${generation}`;
+    }
+    return null;
+  }
+
+  // Render CPU name with optional link to generation page
+  function renderCpuName(cpuRaw, architecture, generation) {
+    const displayName = stripIntelBranding(cpuRaw);
+    const link = getCpuLink(cpuRaw, architecture, generation);
+    if (link) {
+      return `<a href="${link}" class="cpu-link" title="${cpuRaw}">${displayName}</a>`;
+    }
+    return `<span title="${cpuRaw}">${displayName}</span>`;
   }
 
   // Render CPU list (filtered by search and with counts)
@@ -1982,13 +2025,13 @@ cd quicksync_calc
     tbody.innerHTML = results.map(r => {
       const testClass = r.test_name.includes('cpu') ? 'cpu' : r.test_name.includes('hevc') ? 'hevc' : 'h264';
       const date = new Date(r.submitted_at).toLocaleDateString();
-      const displayCpu = stripIntelBranding(r.cpu_raw);
+      const cpuHtml = renderCpuName(r.cpu_raw, r.architecture, r.cpu_generation);
       const score = cpuScores[r.cpu_raw];
       const scoreClass = score >= 70 ? 'score-high' : score >= 40 ? 'score-mid' : 'score-low';
 
       return `
         <tr>
-          <td class="cpu-cell" title="${r.cpu_raw}">${displayCpu}</td>
+          <td class="cpu-cell">${cpuHtml}</td>
           <td>${r.architecture || '-'}</td>
           <td><span class="test-badge ${testClass}">${r.test_name}</span></td>
           <td class="numeric">${r.avg_fps?.toFixed(1) || '-'}</td>

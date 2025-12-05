@@ -1,0 +1,884 @@
+---
+/**
+ * CPU Generation Detail Page
+ * Dynamic route: /cpu/gen/8, /cpu/gen/12, /cpu/gen/ultra-1, etc.
+ */
+export const prerender = false;
+
+import Layout from '../../../layouts/Layout.astro';
+import TimelineSlider from '../../../components/generation/TimelineSlider.astro';
+import CodecMatrix from '../../../components/generation/CodecMatrix.astro';
+import ArchitectureCard from '../../../components/generation/ArchitectureCard.astro';
+import CpuModelTable from '../../../components/generation/CpuModelTable.astro';
+
+// Get the generation parameter from the URL
+const { gen } = Astro.params;
+
+// API base URL - use environment variable or default
+const API_BASE = import.meta.env.PUBLIC_API_URL || 'https://quicksync-api.ktz.me';
+
+// Fetch generation detail data and scores in parallel
+let generationData: any = null;
+let scoresData: Record<string, number> = {};
+let error: string | null = null;
+
+try {
+  const [genResponse, scoresResponse] = await Promise.all([
+    fetch(`${API_BASE}/api/results/generation-detail?generation=${gen}`),
+    fetch(`${API_BASE}/api/scores/for-results`),
+  ]);
+
+  if (genResponse.ok) {
+    generationData = await genResponse.json();
+    if (!generationData.success) {
+      error = generationData.error || 'Failed to load generation data';
+    }
+  } else {
+    error = `API error: ${genResponse.status}`;
+  }
+
+  if (scoresResponse.ok) {
+    const scoresJson = await scoresResponse.json();
+    if (scoresJson.success) {
+      scoresData = scoresJson.scores;
+    }
+  }
+} catch (e) {
+  error = 'Failed to connect to API';
+}
+
+// Add scores to cpu_models data and sort by score (highest first)
+if (generationData?.cpu_models) {
+  generationData.cpu_models = generationData.cpu_models
+    .map((cpu: any) => ({
+      ...cpu,
+      score: scoresData[cpu.cpu_raw] ?? null,
+    }))
+    .sort((a: any, b: any) => {
+      // Sort by score descending, nulls last
+      if (a.score === null && b.score === null) return 0;
+      if (a.score === null) return 1;
+      if (b.score === null) return -1;
+      return b.score - a.score;
+    });
+}
+
+// Strip Intel branding helper
+function stripCpuBranding(cpu: string): string {
+  return cpu
+    .replace(/Intel\(R\)\s*/gi, '')
+    .replace(/Core\(TM\)\s*/gi, '')
+    .replace(/\s+CPU\s*@\s*[\d.]+GHz/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Determine the top CPU and why it wins (now sorted by score)
+function getWinnerExplanation(cpuModels: any[]) {
+  if (!cpuModels || cpuModels.length < 2) return null;
+
+  const winner = cpuModels[0];
+  const second = cpuModels[1];
+
+  if (!winner || !second) return null;
+
+  const parts = [];
+
+  // Score advantage (primary metric now)
+  if (winner.score && second.score) {
+    const scoreDiff = winner.score - second.score;
+    if (scoreDiff > 0) {
+      parts.push(`+${scoreDiff} points vs ${stripCpuBranding(second.cpu_raw)}`);
+    }
+  }
+
+  // Efficiency highlight
+  if (winner.fps_per_watt) {
+    parts.push(`${winner.fps_per_watt.toFixed(1)} FPS/W efficiency`);
+  }
+
+  // Overall score label
+  if (winner.score) {
+    const scoreLabel = winner.score >= 70 ? 'excellent' : winner.score >= 50 ? 'good' : 'moderate';
+    parts.push(`${scoreLabel} overall (${winner.score}/100)`);
+  }
+
+  return parts.length > 0 ? parts.join(' • ') : null;
+}
+
+const winnerExplanation = getWinnerExplanation(generationData?.cpu_models);
+const topCpu = generationData?.cpu_models?.[0];
+
+// Generate page title
+const pageTitle = generationData?.display_name
+  ? `${generationData.display_name} - QuickSync Benchmarks`
+  : `Generation ${gen} - QuickSync Benchmarks`;
+
+// Helper to format performance difference
+function formatDiff(diff: number | null): string {
+  if (diff === null) return 'N/A';
+  const sign = diff >= 0 ? '+' : '';
+  return `${sign}${diff}%`;
+}
+
+function getDiffClass(diff: number | null): string {
+  if (diff === null) return '';
+  if (diff > 0) return 'positive';
+  if (diff < 0) return 'negative';
+  return '';
+}
+---
+
+<Layout title={pageTitle}>
+  <div class="container">
+    {error ? (
+      <div class="error-state">
+        <h1>Generation Not Found</h1>
+        <p>{error}</p>
+        <a href="/" class="back-link">&larr; Back to Dashboard</a>
+      </div>
+    ) : generationData ? (
+      <>
+        {/* Header with navigation */}
+        <div class="page-header">
+          <div class="nav-arrows">
+            {generationData.timeline.previous ? (
+              <a href={`/cpu/gen/${generationData.timeline.previous.identifier}`} class="nav-prev">
+                &larr; {generationData.timeline.previous.name}
+              </a>
+            ) : <span class="nav-placeholder" />}
+          </div>
+
+          <div class="header-center">
+            <h1>{generationData.display_name}</h1>
+            {generationData.architecture.name && (
+              <span class="arch-subtitle">{generationData.architecture.name}</span>
+            )}
+          </div>
+
+          <div class="nav-arrows">
+            {generationData.timeline.next ? (
+              <a href={`/cpu/gen/${generationData.timeline.next.identifier}`} class="nav-next">
+                {generationData.timeline.next.name} &rarr;
+              </a>
+            ) : <span class="nav-placeholder" />}
+          </div>
+        </div>
+
+        {/* Timeline */}
+        <section class="timeline-section card">
+          <h2>Generation Timeline</h2>
+          <TimelineSlider
+            generations={generationData.timeline.all_generations}
+            currentIdentifier={gen || ''}
+          />
+        </section>
+
+        {/* TL;DR Summary with Stats and Charts */}
+        <section class="tldr-section card">
+          <h2>TL;DR</h2>
+          <p class="tldr-text">
+            <strong>{generationData.display_name}</strong>
+            {generationData.architecture.name && ` (${generationData.architecture.name})`}
+            {generationData.architecture.release_year && `, released ${generationData.architecture.release_year}`}.
+            {generationData.has_multiple_variants && generationData.architecture_variants?.length > 1 ? (
+              <>
+                {' '}Features multiple iGPU variants:{' '}
+                {generationData.architecture_variants.map((v: any, i: number) => (
+                  <><strong>{v.igpu_name}</strong> ({v.gpu_eu_count}){i < generationData.architecture_variants.length - 1 ? ' or ' : ''}</>
+                ))}.
+                <span class="variant-note"> iGPU varies by CPU model (i3/i5 non-K vs i5-K/i7/i9).</span>
+              </>
+            ) : generationData.architecture.igpu_name && (
+              <> Features <strong>{generationData.architecture.igpu_name}</strong> with {generationData.architecture.gpu_eu_count || 'integrated graphics'}.</>
+            )}
+            {' '}Supports
+            {generationData.codec_support.h264_encode && ' H.264'}
+            {generationData.codec_support.hevc_8bit_encode && ', HEVC 8-bit'}
+            {generationData.codec_support.hevc_10bit_encode && ', HEVC 10-bit'}
+            {generationData.codec_support.vp9_encode && ', VP9'}
+            {generationData.codec_support.av1_encode && ', AV1'}
+            {' '}hardware encoding.
+          </p>
+
+          {/* Stats Grid with Baseline Comparison */}
+          {generationData.benchmark_stats.total_results > 0 && (
+            <div class="tldr-stats">
+              <div class="tldr-stats-grid">
+                <div class="tldr-stat-card">
+                  <div class="tldr-stat-label">Avg FPS</div>
+                  <div class="tldr-stat-value">{generationData.benchmark_stats.avg_fps?.toFixed(1) || '—'}</div>
+                  {gen !== '8' && generationData.baseline_comparison.fps_diff_percent !== null && (
+                    <div class:list={['tldr-stat-diff', getDiffClass(generationData.baseline_comparison.fps_diff_percent)]}>
+                      {formatDiff(generationData.baseline_comparison.fps_diff_percent)} vs 8th Gen
+                    </div>
+                  )}
+                </div>
+                <div class="tldr-stat-card">
+                  <div class="tldr-stat-label">Efficiency</div>
+                  <div class="tldr-stat-value">{generationData.benchmark_stats.fps_per_watt?.toFixed(2) || '—'}<span class="tldr-stat-unit"> FPS/W</span></div>
+                  {gen !== '8' && generationData.baseline_comparison.efficiency_diff_percent !== null && (
+                    <div class:list={['tldr-stat-diff', getDiffClass(generationData.baseline_comparison.efficiency_diff_percent)]}>
+                      {formatDiff(generationData.baseline_comparison.efficiency_diff_percent)} vs 8th Gen
+                    </div>
+                  )}
+                </div>
+                <div class="tldr-stat-card">
+                  <div class="tldr-stat-label">Avg Power</div>
+                  <div class="tldr-stat-value">{generationData.benchmark_stats.avg_watts?.toFixed(1) || '—'}<span class="tldr-stat-unit">W</span></div>
+                </div>
+                <div class="tldr-stat-card">
+                  <div class="tldr-stat-label">Results</div>
+                  <div class="tldr-stat-value">{generationData.benchmark_stats.total_results}</div>
+                  <div class="tldr-stat-sub">{generationData.benchmark_stats.unique_cpus} CPUs</div>
+                </div>
+              </div>
+
+              {/* Comparison Bar Charts */}
+              {generationData.benchmark_stats.by_test?.length > 0 && (
+                <div class="tldr-comparison-charts">
+                  <div class="tldr-chart-container">
+                    <canvas id="gen-fps-chart"></canvas>
+                  </div>
+                  <div class="tldr-chart-container">
+                    <canvas id="gen-watts-chart"></canvas>
+                  </div>
+                  <div class="tldr-chart-container">
+                    <canvas id="gen-efficiency-chart"></canvas>
+                  </div>
+                </div>
+              )}
+
+              {/* 8th Gen is the baseline message */}
+              {gen === '8' && (
+                <div class="tldr-baseline-note">
+                  <span class="baseline-badge">Baseline</span>
+                  8th Gen Coffee Lake is the reference baseline for all efficiency comparisons.
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Architecture & Codec Grid */}
+        <div class="info-grid">
+          <section class="card">
+            <h2>Architecture</h2>
+            <ArchitectureCard
+              architecture={generationData.architecture}
+              variants={generationData.architecture_variants}
+              hasMultipleVariants={generationData.has_multiple_variants}
+              cpuModels={generationData.cpu_models}
+            />
+          </section>
+
+          <section class="card">
+            <h2>Codec Support</h2>
+            <CodecMatrix codecSupport={generationData.codec_support} />
+          </section>
+        </div>
+
+        {/* Benchmark Data */}
+        <section class="benchmark-section card">
+          <h2>
+            Benchmark Data
+            <span class="data-count">
+              {generationData.benchmark_stats.total_results} results from {generationData.benchmark_stats.unique_cpus} CPUs
+            </span>
+          </h2>
+
+          {generationData.benchmark_stats.total_results > 0 ? (
+            <>
+              {/* Stats by Test */}
+              <div class="test-stats">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Test</th>
+                      <th class="numeric">Avg FPS</th>
+                      <th class="numeric">Min</th>
+                      <th class="numeric">Max</th>
+                      <th class="numeric">FPS/Watt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {generationData.benchmark_stats.by_test.map((test: any) => (
+                      <tr>
+                        <td>
+                          <span class:list={['test-badge', test.test_name.includes('hevc') ? 'hevc' : test.test_name.includes('cpu') ? 'cpu' : 'h264']}>
+                            {test.test_name}
+                          </span>
+                        </td>
+                        <td class="numeric">{test.avg_fps?.toFixed(1) || '—'}</td>
+                        <td class="numeric">{test.min_fps?.toFixed(1) || '—'}</td>
+                        <td class="numeric">{test.max_fps?.toFixed(1) || '—'}</td>
+                        <td class="numeric">{test.fps_per_watt?.toFixed(2) || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p class="no-data">No benchmark data available for this generation yet. <a href="/about">Learn how to contribute</a>.</p>
+          )}
+        </section>
+
+        {/* CPU Models in this Generation */}
+        <section class="cpu-models-section card">
+          <h2>CPUs in This Generation</h2>
+
+          {/* Winner explanation */}
+          {topCpu && winnerExplanation && (
+            <div class="winner-callout">
+              <span class="winner-badge">Top Performer</span>
+              <span class="winner-name">{stripCpuBranding(topCpu.cpu_raw)}</span>
+              <span class="winner-reason">{winnerExplanation}</span>
+            </div>
+          )}
+
+          <CpuModelTable cpuModels={generationData.cpu_models} generationId={gen || ''} />
+        </section>
+
+        {/* Pricing Links (Future) */}
+        <section class="pricing-section card">
+          <h2>Find This CPU</h2>
+          <p class="pricing-note">Search for {generationData.display_name} processors on popular marketplaces:</p>
+          <div class="pricing-links">
+            <a href={`https://www.ebay.com/sch/i.html?_nkw=intel+${gen}th+gen+cpu`} target="_blank" rel="noopener" class="pricing-link">
+              eBay
+            </a>
+            <a href={`https://www.amazon.com/s?k=intel+${gen}th+gen+processor`} target="_blank" rel="noopener" class="pricing-link">
+              Amazon
+            </a>
+            <a href={`https://www.newegg.com/p/pl?d=intel+${gen}th+gen`} target="_blank" rel="noopener" class="pricing-link">
+              Newegg
+            </a>
+          </div>
+        </section>
+      </>
+    ) : (
+      <div class="loading-state">
+        <p>Loading...</p>
+      </div>
+    )}
+  </div>
+</Layout>
+
+<style>
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem;
+  }
+
+  /* Page Header */
+  .page-header {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .header-center {
+    text-align: center;
+  }
+
+  .header-center h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .arch-subtitle {
+    display: block;
+    font-size: 1rem;
+    color: var(--color-text-muted);
+    margin-top: 0.25rem;
+  }
+
+  .nav-arrows {
+    display: flex;
+  }
+
+  .nav-arrows:first-child {
+    justify-content: flex-start;
+  }
+
+  .nav-arrows:last-child {
+    justify-content: flex-end;
+  }
+
+  .nav-prev, .nav-next {
+    padding: 0.5rem 1rem;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+  }
+
+  .nav-prev:hover, .nav-next:hover {
+    background: var(--color-bg);
+    border-color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  .nav-placeholder {
+    width: 120px;
+  }
+
+  /* Sections */
+  section {
+    margin-bottom: 1.5rem;
+  }
+
+  section h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .data-count {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--color-text-muted);
+  }
+
+  /* TL;DR Section */
+  .tldr-section {
+    background: linear-gradient(135deg, var(--color-bg-secondary) 0%, rgba(59, 130, 246, 0.05) 100%);
+    border: 2px solid var(--color-accent);
+    box-shadow: 0 4px 24px rgba(59, 130, 246, 0.15);
+  }
+
+  .tldr-text {
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--color-text);
+    margin-bottom: 1.25rem;
+  }
+
+  .variant-note {
+    display: block;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+    margin-top: 0.25rem;
+  }
+
+  .tldr-stats {
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .tldr-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+
+  @media (max-width: 768px) {
+    .tldr-stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  .tldr-stat-card {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 0.875rem;
+    text-align: center;
+  }
+
+  .tldr-stat-label {
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.375rem;
+  }
+
+  .tldr-stat-value {
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+
+  .tldr-stat-unit {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--color-text-muted);
+  }
+
+  .tldr-stat-diff {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    margin-top: 0.25rem;
+  }
+
+  .tldr-stat-diff.positive {
+    color: #22c55e;
+  }
+
+  .tldr-stat-diff.negative {
+    color: #ef4444;
+  }
+
+  .tldr-stat-sub {
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
+    margin-top: 0.25rem;
+  }
+
+  /* Comparison Bar Charts */
+  .tldr-comparison-charts {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .tldr-chart-container {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    height: 220px;
+  }
+
+  @media (max-width: 768px) {
+    .tldr-chart-container {
+      height: 180px;
+    }
+  }
+
+  .tldr-baseline-note {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  .baseline-badge {
+    display: inline-block;
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.25rem 0.5rem;
+    background: var(--color-accent);
+    color: white;
+    border-radius: 0.25rem;
+  }
+
+  /* Info Grid */
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+
+  @media (max-width: 768px) {
+    .info-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .page-header {
+      grid-template-columns: 1fr;
+      text-align: center;
+    }
+
+    .nav-arrows {
+      justify-content: center !important;
+    }
+
+    .nav-placeholder {
+      display: none;
+    }
+  }
+
+  /* Test Stats Table */
+  .test-stats {
+    overflow-x: auto;
+  }
+
+  .test-stats table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .test-stats th {
+    text-align: left;
+    padding: 0.75rem;
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    border-bottom: 2px solid var(--color-border);
+  }
+
+  .test-stats th.numeric {
+    text-align: right;
+  }
+
+  .test-stats td {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.875rem;
+  }
+
+  .test-stats td.numeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .test-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    background-color: var(--color-bg);
+  }
+
+  .test-badge.h264 { color: #22c55e; }
+  .test-badge.hevc { color: #3b82f6; }
+  .test-badge.cpu { color: #f59e0b; }
+
+  .no-data {
+    color: var(--color-text-muted);
+    text-align: center;
+    padding: 2rem;
+  }
+
+  /* Pricing Links */
+  .pricing-note {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    margin-bottom: 1rem;
+  }
+
+  .pricing-links {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .pricing-link {
+    padding: 0.5rem 1rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+  }
+
+  .pricing-link:hover {
+    border-color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  /* States */
+  .error-state, .loading-state {
+    text-align: center;
+    padding: 4rem 2rem;
+  }
+
+  .error-state h1 {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .back-link {
+    display: inline-block;
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    background: var(--color-accent);
+    color: white;
+    border-radius: 0.375rem;
+  }
+
+  .back-link:hover {
+    background: var(--color-accent-hover);
+    text-decoration: none;
+  }
+
+  /* Winner Callout */
+  .winner-callout {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, rgba(255, 183, 0, 0.05) 100%);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .winner-badge {
+    display: inline-block;
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.25rem 0.5rem;
+    background: linear-gradient(135deg, #ffd700, #ffb700);
+    color: #1a1a1a;
+    border-radius: 0.25rem;
+  }
+
+  .winner-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .winner-reason {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    flex: 1;
+  }
+
+  @media (max-width: 600px) {
+    .winner-callout {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }
+</style>
+
+{generationData?.benchmark_stats?.by_test?.length > 0 && (
+<script define:vars={{
+  displayName: generationData.display_name,
+  byTest: generationData.benchmark_stats.by_test,
+  baselineByTest: generationData.baseline_by_test || [],
+  isBaseline: gen === '8'
+}}>
+  // Generation colors
+  const genColor = { bg: 'rgba(6, 182, 212, 0.7)', border: 'rgb(6, 182, 212)' };
+  const baselineColor = { bg: 'rgba(120, 120, 130, 0.6)', border: 'rgb(120, 120, 130)' };
+
+  // Build datasets for comparison charts
+  function buildDatasets(metric) {
+    const testNames = byTest.map(t => t.test_name);
+
+    const datasets = [{
+      label: displayName,
+      data: testNames.map(testName => {
+        const test = byTest.find(t => t.test_name === testName);
+        return test?.[metric] || 0;
+      }),
+      backgroundColor: genColor.bg,
+      borderColor: genColor.border,
+      borderWidth: 1,
+    }];
+
+    // Add baseline if not viewing 8th gen
+    if (!isBaseline && baselineByTest.length > 0) {
+      datasets.push({
+        label: '8th Gen (Baseline)',
+        data: testNames.map(testName => {
+          const test = baselineByTest.find(t => t.test_name === testName);
+          return test?.[metric] || 0;
+        }),
+        backgroundColor: baselineColor.bg,
+        borderColor: baselineColor.border,
+        borderWidth: 1,
+      });
+    }
+
+    return datasets;
+  }
+
+  // Create comparison chart
+  function createChart(canvasId, title, yLabel, metric) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return null;
+
+    const testNames = byTest.map(t => t.test_name);
+
+    return new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: testNames,
+        datasets: buildDatasets(metric),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { color: '#f1f5f9', font: { size: 11 } },
+          },
+          title: {
+            display: true,
+            text: title,
+            color: '#f1f5f9',
+            font: { size: 13, weight: '600' },
+          },
+          tooltip: {
+            callbacks: {
+              afterLabel: (context) => {
+                if (context.datasetIndex === 0 && !isBaseline && baselineByTest.length > 0) {
+                  const testName = testNames[context.dataIndex];
+                  const baselineTest = baselineByTest.find(t => t.test_name === testName);
+                  const baseVal = baselineTest?.[metric];
+                  if (baseVal && baseVal > 0) {
+                    const diff = metric === 'avg_watts'
+                      ? ((baseVal - context.raw) / baseVal * 100)
+                      : ((context.raw - baseVal) / baseVal * 100);
+                    return `${diff >= 0 ? '+' : ''}${diff.toFixed(0)}% vs 8th Gen`;
+                  }
+                }
+                return '';
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#94a3b8', font: { size: 10 } },
+            grid: { color: '#334155' },
+          },
+          y: {
+            ticks: { color: '#94a3b8' },
+            grid: { color: '#334155' },
+            title: { display: true, text: yLabel, color: '#94a3b8' },
+          },
+        },
+      },
+    });
+  }
+
+  // Load Chart.js and create charts
+  function initCharts() {
+    createChart('gen-fps-chart', 'Average FPS by Test Type', 'Frames per Second', 'avg_fps');
+    createChart('gen-watts-chart', 'Average Power Usage by Test Type', 'Watts', 'avg_watts');
+    createChart('gen-efficiency-chart', 'Efficiency (FPS per Watt) by Test Type', 'FPS/Watt', 'fps_per_watt');
+  }
+
+  // Check if Chart.js is already loaded
+  if (typeof Chart !== 'undefined') {
+    initCharts();
+  } else {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+    script.onload = initCharts;
+    document.head.appendChild(script);
+  }
+</script>
+)}

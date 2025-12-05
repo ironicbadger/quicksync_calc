@@ -4,3 +4,4 @@ comments.pkl
 secrets.yaml
 node_modules/
 .wrangler/
+.dev.vars
