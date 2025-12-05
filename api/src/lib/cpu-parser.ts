@@ -81,6 +81,9 @@ const CPU_PATTERNS: ArchitecturePattern[] = [
   // AMD EPYC (server CPUs - no iGPU, but may be paired with discrete GPU)
   { pattern: /EPYC\s*7\d{3}/, architecture: 'AMD EPYC Rome/Milan', codename: 'Rome/Milan', releaseYear: 2019, sortOrder: 300 },
   { pattern: /EPYC\s*9\d{3}/, architecture: 'AMD EPYC Genoa', codename: 'Genoa', releaseYear: 2022, sortOrder: 310 },
+  // Intel Arc GPUs (discrete)
+  { pattern: /Arc\s*A\d{2,3}/, architecture: 'Arc Alchemist', codename: 'DG2', releaseYear: 2022, sortOrder: 145 },
+  { pattern: /Arc\s*B\d{3}/, architecture: 'Arc Battlemage', codename: 'BMG', releaseYear: 2024, sortOrder: 147 },
 ];
 
 /**

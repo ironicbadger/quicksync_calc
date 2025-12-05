@@ -356,22 +356,56 @@ function getDiffClass(diff: number | null): string {
           <CpuModelTable cpuModels={generationData.cpu_models} generationId={gen || ''} />
         </section>
 
-        {/* Pricing Links (Future) */}
-        <section class="pricing-section card">
-          <h2>Find This CPU</h2>
-          <p class="pricing-note">Search for {generationData.display_name} processors on popular marketplaces:</p>
-          <div class="pricing-links">
-            <a href={`https://www.ebay.com/sch/i.html?_nkw=intel+${gen}th+gen+cpu`} target="_blank" rel="noopener" class="pricing-link">
-              eBay
-            </a>
-            <a href={`https://www.amazon.com/s?k=intel+${gen}th+gen+processor`} target="_blank" rel="noopener" class="pricing-link">
-              Amazon
-            </a>
-            <a href={`https://www.newegg.com/p/pl?d=intel+${gen}th+gen`} target="_blank" rel="noopener" class="pricing-link">
-              Newegg
-            </a>
-          </div>
-        </section>
+        {/* Pricing Links - conditional based on generation type */}
+        {/^\d+$/.test(gen || '') ? (
+          <section class="pricing-section card">
+            <h2>Find This CPU</h2>
+            <p class="pricing-note">Search for {generationData.display_name} processors on popular marketplaces:</p>
+            <div class="pricing-links">
+              <a href={`https://www.ebay.com/sch/i.html?_nkw=intel+${gen}th+gen+cpu`} target="_blank" rel="noopener" class="pricing-link">
+                eBay
+              </a>
+              <a href={`https://www.amazon.com/s?k=intel+${gen}th+gen+processor`} target="_blank" rel="noopener" class="pricing-link">
+                Amazon
+              </a>
+              <a href={`https://www.newegg.com/p/pl?d=intel+${gen}th+gen`} target="_blank" rel="noopener" class="pricing-link">
+                Newegg
+              </a>
+            </div>
+          </section>
+        ) : gen === 'arc' ? (
+          <section class="pricing-section card">
+            <h2>Find Intel Arc GPUs</h2>
+            <p class="pricing-note">Search for Intel Arc discrete graphics cards:</p>
+            <div class="pricing-links">
+              <a href="https://www.ebay.com/sch/i.html?_nkw=intel+arc+gpu" target="_blank" rel="noopener" class="pricing-link">
+                eBay
+              </a>
+              <a href="https://www.amazon.com/s?k=intel+arc+graphics+card" target="_blank" rel="noopener" class="pricing-link">
+                Amazon
+              </a>
+              <a href="https://www.newegg.com/p/pl?d=intel+arc" target="_blank" rel="noopener" class="pricing-link">
+                Newegg
+              </a>
+            </div>
+          </section>
+        ) : gen?.startsWith('ultra') ? (
+          <section class="pricing-section card">
+            <h2>Find This CPU</h2>
+            <p class="pricing-note">Search for {generationData.display_name} processors on popular marketplaces:</p>
+            <div class="pricing-links">
+              <a href="https://www.ebay.com/sch/i.html?_nkw=intel+core+ultra+cpu" target="_blank" rel="noopener" class="pricing-link">
+                eBay
+              </a>
+              <a href="https://www.amazon.com/s?k=intel+core+ultra+processor" target="_blank" rel="noopener" class="pricing-link">
+                Amazon
+              </a>
+              <a href="https://www.newegg.com/p/pl?d=intel+core+ultra" target="_blank" rel="noopener" class="pricing-link">
+                Newegg
+              </a>
+            </div>
+          </section>
+        ) : null}
       </>
     ) : (
       <div class="loading-state">
