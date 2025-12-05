@@ -8,6 +8,25 @@
 #   QUICKSYNC_ID           - Optional identifier for your submissions
 #   QUICKSYNC_API_URL      - API endpoint (default: https://quicksync-api.ktz.me)
 #
+# Flags:
+#   --skip-warnings        - Skip the GPU process warning prompt
+#
+
+# Parse command line arguments
+SKIP_WARNINGS=0
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --skip-warnings)
+      SKIP_WARNINGS=1
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1"
+      echo "Usage: $0 [--skip-warnings]"
+      exit 1
+      ;;
+  esac
+done
 
 # Configuration
 API_URL="${QUICKSYNC_API_URL:-https://quicksync-api.ktz.me}"
@@ -15,6 +34,8 @@ API_URL="${QUICKSYNC_API_URL:-https://quicksync-api.ktz.me}"
 start(){
 
   show_banner
+
+  show_gpu_warning
 
   cleanup
 
@@ -44,6 +65,35 @@ EOF
   echo ""
   echo "Results can be submitted to the community database for comparison."
   echo "Learn more: https://quicksync.ktz.me"
+  echo ""
+}
+
+show_gpu_warning(){
+  if [ "$SKIP_WARNINGS" -eq 1 ]; then
+    return 0
+  fi
+
+  echo "======================================================="
+  echo "                      WARNING"
+  echo "======================================================="
+  echo ""
+  echo "For accurate benchmark results, please ensure that no"
+  echo "other processes are using the Intel GPU, including:"
+  echo ""
+  echo "  - Jellyfin / Plex / Emby transcoding sessions"
+  echo "  - Desktop compositors using hardware acceleration"
+  echo "  - Browsers with hardware video decode enabled"
+  echo "  - Other FFmpeg or video encoding processes"
+  echo ""
+  echo "GPU activity during the benchmark will skew power"
+  echo "measurements and may affect encoding performance."
+  echo ""
+  echo "Tip: Run 'intel_gpu_top' in another terminal to check"
+  echo "     for GPU activity before proceeding."
+  echo ""
+  echo "======================================================="
+  echo ""
+  read -p "Press Enter to continue or Ctrl+C to abort... "
   echo ""
 }
 
