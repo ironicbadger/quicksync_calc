@@ -801,6 +801,26 @@ Data sourced from community submissions &bull;
   // Make it globally accessible for chart click handler
   window.toggleGenerationFilter = toggleGenerationFilter;
 
+  // Toggle architecture filter (called from chart click for Arc)
+  function toggleArchitectureFilter(architecture) {
+    const archStr = String(architecture);
+    const checkbox = document.querySelector(`[data-filter="architecture"][value="${archStr}"]`);
+
+    if (state.filters.architecture.includes(archStr)) {
+      state.filters.architecture = state.filters.architecture.filter(a => a !== archStr);
+      if (checkbox) checkbox.checked = false;
+    } else {
+      state.filters.architecture.push(archStr);
+      if (checkbox) checkbox.checked = true;
+    }
+
+    state.pagination.offset = 0;
+    onFiltersChanged();
+  }
+
+  // Make it globally accessible for chart click handler
+  window.toggleArchitectureFilter = toggleArchitectureFilter;
+
   // Fetch boxplot data
   async function fetchBoxplotData() {
     const params = new URLSearchParams();
@@ -862,8 +882,11 @@ Data sourced from community submissions &bull;
     const boxplotData = state.boxplotData[metric] || [];
 
     // Group by generation and sort (put "Arc" at the end)
+    // Filter out generations < 6
     const allGroups = [...new Set(boxplotData.map(d => d.group))];
-    const numericGroups = allGroups.filter(g => !isNaN(parseInt(g))).sort((a, b) => parseInt(a) - parseInt(b));
+    const numericGroups = allGroups
+      .filter(g => !isNaN(parseInt(g)) && parseInt(g) >= 6)
+      .sort((a, b) => parseInt(a) - parseInt(b));
     const nonNumericGroups = allGroups.filter(g => isNaN(parseInt(g))).sort();
     const generations = [...numericGroups, ...nonNumericGroups];
     const tests = [...new Set(boxplotData.map(d => d.test))];
@@ -907,8 +930,14 @@ Data sourced from community submissions &bull;
         onClick: (event, elements) => {
           if (elements.length > 0) {
             const index = elements[0].index;
-            const generation = generations[index];
-            window.toggleGenerationFilter(generation);
+            const group = generations[index];
+            const isNumeric = !isNaN(parseInt(group));
+            if (isNumeric) {
+              window.toggleGenerationFilter(group);
+            } else if (group === 'Arc') {
+              window.toggleArchitectureFilter('Alchemist');
+              window.toggleArchitectureFilter('Battlemage');
+            }
           }
         },
         plugins: {
@@ -922,8 +951,11 @@ Data sourced from community submissions &bull;
                 const gen = generations[items[0].dataIndex];
                 const isNumeric = !isNaN(parseInt(gen));
                 const label = isNumeric ? `Gen ${gen}` : gen;
-                const isSelected = selectedGens.includes(String(gen));
-                return `${label}${isSelected ? ' (filtered)' : ''}${isNumeric ? ' - Click to toggle' : ''}`;
+                const isSelected = isNumeric
+                  ? selectedGens.includes(String(gen))
+                  : (gen === 'Arc' && (state.filters.architecture.includes('Alchemist') || state.filters.architecture.includes('Battlemage')));
+                const isClickable = isNumeric || gen === 'Arc';
+                return `${label}${isSelected ? ' (filtered)' : ''}${isClickable ? ' - Click to toggle' : ''}`;
               }
             }
           }
@@ -933,11 +965,19 @@ Data sourced from community submissions &bull;
             ticks: {
               color: (ctx) => {
                 const gen = generations[ctx.index];
-                return selectedGens.includes(String(gen)) ? '#3b82f6' : '#94a3b8';
+                const isNumeric = !isNaN(parseInt(gen));
+                const isSelected = isNumeric
+                  ? selectedGens.includes(String(gen))
+                  : (gen === 'Arc' && (state.filters.architecture.includes('Alchemist') || state.filters.architecture.includes('Battlemage')));
+                return isSelected ? '#3b82f6' : '#94a3b8';
               },
               font: (ctx) => {
                 const gen = generations[ctx.index];
-                return { weight: selectedGens.includes(String(gen)) ? 'bold' : 'normal' };
+                const isNumeric = !isNaN(parseInt(gen));
+                const isSelected = isNumeric
+                  ? selectedGens.includes(String(gen))
+                  : (gen === 'Arc' && (state.filters.architecture.includes('Alchemist') || state.filters.architecture.includes('Battlemage')));
+                return { weight: isSelected ? 'bold' : 'normal' };
               }
             },
             grid: { color: '#334155' },

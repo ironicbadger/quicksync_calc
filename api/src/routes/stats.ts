@@ -101,6 +101,13 @@ stats.get('/boxplot', async (c) => {
     }
   }
 
+  // Build watts filter - Arc GPUs can use more power than CPUs
+  // Only apply the < 50W filter for CPU results, not for Arc GPUs
+  const isArcFilter = archFilter && (archFilter.includes('Alchemist') || archFilter.includes('Battlemage'));
+  const wattsFilter = metricColumn === 'avg_watts'
+    ? (isArcFilter ? 'AND avg_watts > 0 AND avg_watts < 500' : 'AND avg_watts > 0 AND avg_watts < 50')
+    : '';
+
   // Get all values grouped by category and test
   const result = await db.execute({
     sql: `
@@ -112,7 +119,7 @@ stats.get('/boxplot', async (c) => {
       WHERE vendor = ?
         AND ${groupColumn} IS NOT NULL
         AND ${metricColumn} IS NOT NULL
-        ${metricColumn === 'avg_watts' ? 'AND avg_watts > 0 AND avg_watts < 50' : ''}
+        ${wattsFilter}
         ${metricColumn === 'fps_per_watt' ? 'AND fps_per_watt IS NOT NULL' : ''}
         ${conditions}
       ORDER BY ${groupColumn}, test_name, ${metricColumn}
