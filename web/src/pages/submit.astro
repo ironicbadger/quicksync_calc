@@ -128,9 +128,15 @@ const TURNSTILE_SITE_KEY = '0x4AAAAAACE2xYy4W4qewY3u';
 
     // Initialize
     async function init() {
-      // Get token from URL
+      // Get token and optional ID from URL
       const params = new URLSearchParams(window.location.search);
       state.token = params.get('token');
+      const urlSubmitterId = params.get('id');
+
+      // Pre-populate submitter ID if provided in URL
+      if (urlSubmitterId) {
+        submitterInput.value = urlSubmitterId;
+      }
 
       if (!state.token) {
         showError('No Token Provided', 'Please use the link provided by the benchmark script.');

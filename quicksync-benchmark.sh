@@ -5,6 +5,7 @@
 #
 # Environment variables:
 #   QUICKSYNC_NO_SUBMIT=1  - Skip uploading results for web verification
+#   QUICKSYNC_ID           - Optional identifier for your submissions
 #   QUICKSYNC_API_URL      - API endpoint (default: https://quicksync-api.ktz.me)
 #
 
@@ -368,12 +369,21 @@ upload_for_verification(){
   token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
   if [ -n "$token" ]; then
+    # Build submission URL with optional ID
+    local submit_url="https://quicksync.ktz.me/submit?token=${token}"
+    if [ -n "${QUICKSYNC_ID:-}" ]; then
+      # URL-encode the ID (basic encoding for common characters)
+      local encoded_id
+      encoded_id=$(printf '%s' "$QUICKSYNC_ID" | sed 's/ /%20/g; s/!/%21/g; s/#/%23/g; s/\$/%24/g; s/&/%26/g; s/'\''/%27/g; s/(/%28/g; s/)/%29/g; s/+/%2B/g; s/,/%2C/g; s/:/%3A/g; s/;/%3B/g; s/=/%3D/g; s/?/%3F/g; s/@/%40/g')
+      submit_url="${submit_url}&id=${encoded_id}"
+    fi
+
     echo ""
     echo "================================================================"
     echo ""
     echo "  Submit your results at:"
     echo ""
-    echo "    https://quicksync.ktz.me/submit?token=${token}"
+    echo "    ${submit_url}"
     echo ""
     echo "  Link expires in 24 hours."
     echo ""

@@ -68,14 +68,14 @@ import Layout from '../layouts/Layout.astro';
 cd quicksync_calc</code></pre>
 
       <h3 style="margin-top: 1rem; font-size: 1rem;">2. Run the benchmark</h3>
-      <pre style="background: var(--color-bg); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-top: 0.5rem;"><code># Run benchmark only
+      <pre style="background: var(--color-bg); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-top: 0.5rem;"><code># Run benchmark (results upload automatically)
 ./quicksync-benchmark.sh
 
-# Run and submit results (optional)
-QUICKSYNC_SUBMIT=1 ./quicksync-benchmark.sh
+# Run with your identifier to track your submissions
+QUICKSYNC_ID="my_homelab" ./quicksync-benchmark.sh
 
-# Run with your identifier (optional)
-QUICKSYNC_ID="my_homelab" QUICKSYNC_SUBMIT=1 ./quicksync-benchmark.sh</code></pre>
+# Skip result upload
+QUICKSYNC_NO_SUBMIT=1 ./quicksync-benchmark.sh</code></pre>
 
       <h3 style="margin-top: 1rem; font-size: 1rem;">Requirements</h3>
       <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
