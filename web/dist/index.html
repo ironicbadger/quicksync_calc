@@ -822,23 +822,21 @@ Data sourced from community submissions &bull;
   window.toggleArchitectureFilter = toggleArchitectureFilter;
 
   // Fetch boxplot data
+  // NOTE: Charts always show all generations + Arc, regardless of filters
+  // Architecture filter only affects the results table, not the charts
   async function fetchBoxplotData() {
     const params = new URLSearchParams();
     if (state.filters.test.length > 0) {
       params.set('test', state.filters.test.join(','));
     }
-    if (state.filters.generation.length > 0) {
-      params.set('generation', state.filters.generation.join(','));
-    }
-    if (state.filters.architecture.length > 0) {
-      params.set('architecture', state.filters.architecture.join(','));
-    }
+    // Don't filter charts by generation or architecture - they always show all data
+    // The filters only affect the results table
 
     const metrics = ['avg_fps', 'avg_watts', 'fps_per_watt'];
 
     for (const metric of metrics) {
       try {
-        // Fetch CPU generation data
+        // Fetch CPU generation data (unfiltered by generation/architecture)
         const res = await fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=cpu_generation&${params}`);
         const data = await res.json();
 
