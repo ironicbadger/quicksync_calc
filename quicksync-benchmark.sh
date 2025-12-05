@@ -251,8 +251,19 @@ benchmarks(){
 
   #Calculate average Wattage
   if [ $1 != "h264_1080p_cpu" ]; then
-    total_watts=$(awk '{ print $5 }' $1.output | grep -Ev '^0|Power|gpu' | paste -s -d + - | bc)
-    total_count=$(awk '{ print $5 }' $1.output | grep -Ev '^0|Power|gpu' | wc -l)
+    total_watts=$(
+      awk '{ print $5 }' $1.output \
+      | grep -E '^[0-9.]+$' \
+      | grep -Ev '^(0(\.0+)?|Power|gpu)$' \
+      | paste -s -d+ - \
+      | bc
+    )
+    total_count=$(
+      awk '{ print $5 }' $1.output \
+      | grep -E '^[0-9.]+$' \
+      | grep -Ev '^(0(\.0+)?|Power|gpu)$' \
+      | wc -l
+    )
     avg_watts=$(echo "scale=2; $total_watts / $total_count" | bc -l)
   else
     avg_watts="N/A"
@@ -265,8 +276,11 @@ benchmarks(){
     avg_fps=$(echo "scale=2; $total_fps / $fps_count" | bc -l)
 
     #Calculate average speed
-    total_speed=$(grep -Eo 'speed=[0-9].[0-9].' $i | sed -e 's/speed=//' | paste -s -d + - | bc)
-    speed_count=$(grep -Eo 'speed=[0-9].[0-9].' $i | sed -e 's/speed=//' | wc -l)
+    total_speed=$(grep -Eo 'speed=[0-9]+(\.[0-9]+)?x' "$i" \
+      | sed -E 's/speed=([0-9.]+)x/\1/' \
+      | paste -s -d+ - \
+      | bc)
+    speed_count=$(grep -Eo 'speed=[0-9]+(\.[0-9]+)?x' "$i" | wc -l)
     avg_speed="$(echo "scale=2; $total_speed / $speed_count" | bc -l)x"
 
     #Get Bitrate of file
