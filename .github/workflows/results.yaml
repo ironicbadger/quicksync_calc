@@ -2,7 +2,7 @@ name: Build results visualization
 on:
   workflow_dispatch:
   schedule:
-    - cron: "44 4 * * 4"
+    - cron: "44 4 * * *"
   push:
     branches:
       - main
