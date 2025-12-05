@@ -47,16 +47,21 @@ const CPU_PATTERNS: ArchitecturePattern[] = [
   { pattern: /i3-N\d{3}/, architecture: 'Alder Lake-N', codename: 'ADL-N', releaseYear: 2023, sortOrder: 125 }, // i3-N305, i3-N300
   { pattern: /N\d{2}$/, architecture: 'Alder Lake-N', codename: 'ADL-N', releaseYear: 2023, sortOrder: 125 }, // N95, N97, N100
   { pattern: /J[456]\d{3}/, architecture: 'Gemini Lake', codename: 'GLK', releaseYear: 2017, sortOrder: 72 }, // J4105, J4125, J5005
-  { pattern: /Xeon.*E3-\d{4}\s*v6/, architecture: 'Kaby Lake', codename: 'KBL', releaseYear: 2017, sortOrder: 70 }, // E3-1245v6, E3-1275v6
-  { pattern: /Xeon.*E3-\d{4}\s*v5/, architecture: 'Skylake', codename: 'SKL', releaseYear: 2015, sortOrder: 60 }, // E3-1245v5
-  { pattern: /Xeon.*E3-\d{4}\s*v4/, architecture: 'Broadwell', codename: 'BDW', releaseYear: 2015, sortOrder: 50 }, // E3-1245v4
-  { pattern: /Xeon.*E3-\d{4}\s*v3/, architecture: 'Haswell', codename: 'HSW', releaseYear: 2013, sortOrder: 40 }, // E3-1245v3
+  // Xeon E3 with version suffixes - support both "Xeon E3-1245v6" and bare "E3-1245v6"
+  { pattern: /E3-\d{4}\s*v6/, architecture: 'Kaby Lake', codename: 'KBL', releaseYear: 2017, sortOrder: 70 }, // E3-1245v6, E3-1275v6
+  { pattern: /E3-\d{4}\s*v5/, architecture: 'Skylake', codename: 'SKL', releaseYear: 2015, sortOrder: 60 }, // E3-1245v5
+  { pattern: /E3-\d{4}\s*v4/, architecture: 'Broadwell', codename: 'BDW', releaseYear: 2015, sortOrder: 50 }, // E3-1245v4
+  { pattern: /E3-\d{4}\s*v3/, architecture: 'Haswell', codename: 'HSW', releaseYear: 2013, sortOrder: 40 }, // E3-1245v3
   { pattern: /E-2[123]\d{2}G?/, architecture: 'Xeon E', codename: 'CFL', releaseYear: 2018, sortOrder: 85 }, // E-2144G, E-2288G (standalone pattern)
   { pattern: /G4\d{3}[T]?/, architecture: 'Coffee Lake', codename: 'CFL', releaseYear: 2018, sortOrder: 80 }, // G4900T, G4560
   { pattern: /m3-\d{4}Y/, architecture: 'Amber Lake', codename: 'AML-Y', releaseYear: 2018, sortOrder: 83 }, // m3-8100Y
   { pattern: /M-5Y\d{2}/, architecture: 'Broadwell', codename: 'BDW-Y', releaseYear: 2014, sortOrder: 50 }, // M-5Y10c (Core M)
   { pattern: /Pentium.*Silver/, architecture: 'Gemini Lake', codename: 'GLK', releaseYear: 2017, sortOrder: 72 }, // Pentium Silver J/N5xxx
   { pattern: /Silver.*\d{4}/, architecture: 'Gemini Lake', codename: 'GLK', releaseYear: 2017, sortOrder: 72 }, // Silver J5005, Silver N5000
+  { pattern: /^Silver$/, architecture: 'Gemini Lake', codename: 'GLK', releaseYear: 2017, sortOrder: 72 }, // Bare "Silver" (truncated)
+  // AMD EPYC (server CPUs - no iGPU, but may be paired with discrete GPU)
+  { pattern: /EPYC\s*7\d{3}/, architecture: 'AMD EPYC Rome/Milan', codename: 'Rome/Milan', releaseYear: 2019, sortOrder: 300 },
+  { pattern: /EPYC\s*9\d{3}/, architecture: 'AMD EPYC Genoa', codename: 'Genoa', releaseYear: 2022, sortOrder: 310 },
 ];
 
 /**

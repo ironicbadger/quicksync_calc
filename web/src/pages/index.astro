@@ -1548,11 +1548,30 @@ cd quicksync_calc
 
     for (const metric of metrics) {
       try {
+        // Fetch CPU generation data
         const res = await fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=cpu_generation&${params}`);
         const data = await res.json();
 
+        // Also fetch Arc GPU data by architecture
+        const arcParams = new URLSearchParams(params);
+        arcParams.set('architecture', 'Alchemist,Battlemage');
+        const arcRes = await fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=architecture&${arcParams}`);
+        const arcData = await arcRes.json();
+
         if (data.success) {
-          state.boxplotData[metric] = data.boxplot;
+          let boxplotData = data.boxplot;
+
+          // Merge Arc data with "Arc" label (combining Alchemist and Battlemage)
+          if (arcData.success && arcData.boxplot.length > 0) {
+            // Rename Arc architectures to just "Arc" for display
+            const arcResults = arcData.boxplot.map(d => ({
+              ...d,
+              group: 'Arc'
+            }));
+            boxplotData = [...boxplotData, ...arcResults];
+          }
+
+          state.boxplotData[metric] = boxplotData;
           updateChart(metric);
         }
       } catch (e) {
@@ -1572,8 +1591,11 @@ cd quicksync_calc
     const canvas = document.getElementById(chartId);
     const boxplotData = state.boxplotData[metric] || [];
 
-    // Group by generation and sort
-    const generations = [...new Set(boxplotData.map(d => d.group))].sort((a, b) => parseInt(a) - parseInt(b));
+    // Group by generation and sort (put "Arc" at the end)
+    const allGroups = [...new Set(boxplotData.map(d => d.group))];
+    const numericGroups = allGroups.filter(g => !isNaN(parseInt(g))).sort((a, b) => parseInt(a) - parseInt(b));
+    const nonNumericGroups = allGroups.filter(g => isNaN(parseInt(g))).sort();
+    const generations = [...numericGroups, ...nonNumericGroups];
     const tests = [...new Set(boxplotData.map(d => d.test))];
 
     // Build datasets for Chart.js
@@ -1606,7 +1628,7 @@ cd quicksync_calc
     window.charts[chartId] = new Chart(canvas, {
       type: 'bar',
       data: {
-        labels: generations.map(g => `Gen ${g}`),
+        labels: generations.map(g => isNaN(parseInt(g)) ? g : `Gen ${g}`),
         datasets,
       },
       options: {
@@ -1628,8 +1650,10 @@ cd quicksync_calc
             callbacks: {
               title: (items) => {
                 const gen = generations[items[0].dataIndex];
+                const isNumeric = !isNaN(parseInt(gen));
+                const label = isNumeric ? `Gen ${gen}` : gen;
                 const isSelected = selectedGens.includes(String(gen));
-                return `Gen ${gen}${isSelected ? ' (filtered)' : ''} - Click to toggle`;
+                return `${label}${isSelected ? ' (filtered)' : ''}${isNumeric ? ' - Click to toggle' : ''}`;
               }
             }
           }

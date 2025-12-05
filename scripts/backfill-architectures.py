@@ -54,11 +54,12 @@ CPU_PATTERNS = [
     (r'Ultra [3579] 2\d{2}[VU]', 'Lunar Lake', 2),     # Series 2 mobile
 
     # Xeon E3 with version suffixes (check these before generic E3 pattern)
-    (r'Xeon.*E3-\d{4}\s*v6', 'Kaby Lake', 7),
-    (r'Xeon.*E3-\d{4}\s*v5', 'Skylake', 6),
-    (r'Xeon.*E3-\d{4}\s*v4', 'Broadwell', 5),
-    (r'Xeon.*E3-\d{4}\s*v3', 'Haswell', 4),
-    (r'Xeon.*E3-1[23]\d{2}', 'Xeon E3', None),  # Generic E3 (no gen)
+    # Support both "Xeon E3-1245v6" and bare "E3-1245v6"
+    (r'E3-\d{4}\s*v6', 'Kaby Lake', 7),
+    (r'E3-\d{4}\s*v5', 'Skylake', 6),
+    (r'E3-\d{4}\s*v4', 'Broadwell', 5),
+    (r'E3-\d{4}\s*v3', 'Haswell', 4),
+    (r'E3-1[23]\d{2}', 'Xeon E3', None),  # Generic E3 (no gen)
 
     # Xeon E series
     (r'Xeon.*E-2[123]\d{2}', 'Xeon E', 8),
@@ -85,12 +86,18 @@ CPU_PATTERNS = [
     # Pentium/Celeron Silver
     (r'Pentium.*Silver', 'Gemini Lake', None),
     (r'Silver.*\d{4}', 'Gemini Lake', None),
+    (r'^Silver$', 'Gemini Lake', None),  # Bare "Silver" (likely truncated Pentium Silver)
 
-    # Arc GPU
-    (r'Arc A\d{3}', 'Arc Alchemist', None),
+    # Intel Arc GPUs
+    (r'Arc\s*A\d{2,3}', 'Alchemist', 1),   # Arc A-series (A770, A750, A380, A40 Pro, etc.)
+    (r'Arc\s*B\d{3}', 'Battlemage', 2),    # Arc B-series (B580, B570)
 
     # Intel Processor N-series
     (r'Processor N\d{3}', 'Alder Lake-N', 12),
+
+    # AMD EPYC (server CPUs - no iGPU, but may be paired with discrete GPU)
+    (r'EPYC\s*7\d{3}', 'AMD EPYC Rome/Milan', None),  # EPYC 7xxx series
+    (r'EPYC\s*9\d{3}', 'AMD EPYC Genoa', None),       # EPYC 9xxx series
 ]
 
 

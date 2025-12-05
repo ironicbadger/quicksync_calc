@@ -1,11 +1,11 @@
-<!DOCTYPE html><html lang="en"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="description" content="Intel Quick Sync Video benchmark results - Compare hardware encoding performance across CPU generations"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet"><title>QuickSync Benchmarks - Intel Quick Sync Video Performance</title><style>:root{--color-bg: #0f172a;--color-bg-secondary: #1e293b;--color-text: #f1f5f9;--color-text-muted: #94a3b8;--color-accent: #3b82f6;--color-accent-hover: #60a5fa;--color-border: #334155;--font-mono: "Fira Code", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Monaco, "Courier New", monospace}*{box-sizing:border-box;margin:0;padding:0}html{font-family:var(--font-mono);background-color:var(--color-bg);color:var(--color-text);line-height:1.6}body{min-height:100vh}a{color:var(--color-accent);text-decoration:none}a:hover{color:var(--color-accent-hover);text-decoration:underline}code{font-family:var(--font-mono);font-size:.875em;background-color:var(--color-bg-secondary);padding:.125rem .375rem;border-radius:.25rem}.container{max-width:1400px;margin:0 auto;padding:0 1rem}.card{background-color:var(--color-bg-secondary);border:1px solid var(--color-border);border-radius:.5rem;padding:1.5rem}button{cursor:pointer;font-family:inherit}select,input{font-family:inherit;font-size:1rem}
+<!DOCTYPE html><html lang="en"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="description" content="Intel Quick Sync Video benchmark results - Compare hardware encoding performance across CPU generations"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet"><title>QuickSync Benchmarks - Intel Quick Sync Video Performance</title><!-- Plausible Analytics --><script defer data-domain="quicksync.ktz.me" src="https://plausible.ktz.cloud/js/script.js"></script><style>:root{--color-bg: #0f172a;--color-bg-secondary: #1e293b;--color-text: #f1f5f9;--color-text-muted: #94a3b8;--color-accent: #3b82f6;--color-accent-hover: #60a5fa;--color-border: #334155;--font-mono: "Fira Code", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Monaco, "Courier New", monospace}*{box-sizing:border-box;margin:0;padding:0}html{font-family:var(--font-mono);background-color:var(--color-bg);color:var(--color-text);line-height:1.6}body{min-height:100vh}a{color:var(--color-accent);text-decoration:none}a:hover{color:var(--color-accent-hover);text-decoration:underline}code{font-family:var(--font-mono);font-size:.875em;background-color:var(--color-bg-secondary);padding:.125rem .375rem;border-radius:.25rem}.container{max-width:1400px;margin:0 auto;padding:0 1rem}.card{background-color:var(--color-bg-secondary);border:1px solid var(--color-border);border-radius:.5rem;padding:1.5rem}button{cursor:pointer;font-family:inherit}select,input{font-family:inherit;font-size:1rem}
 </style>
-<link rel="stylesheet" href="/_astro/index.B0PGYvDy.css"></head> <body> <header style="border-bottom: 1px solid var(--color-border); padding: 1rem 0;"> <div class="container" style="display: flex; justify-content: space-between; align-items: center;"> <a href="/" style="font-size: 1.25rem; font-weight: 600; color: var(--color-text);">
+<link rel="stylesheet" href="/_astro/index.Ctx0_dBB.css"></head> <body> <header style="border-bottom: 1px solid var(--color-border); padding: 1rem 0;"> <div class="container" style="display: flex; justify-content: space-between; align-items: center;"> <a href="/" style="font-size: 1.25rem; font-weight: 600; color: var(--color-text);">
 QuickSync Benchmarks
 </a> <nav style="display: flex; gap: 1.5rem;"> <a href="/">Dashboard</a> <a href="/leaderboard">Leaderboard</a> <a href="/about">About</a> <a href="https://github.com/ironicbadger/quicksync_calc" target="_blank" rel="noopener">GitHub</a> </nav> </div> </header> <main style="padding: 2rem 0;">   <div id="info-banner" class="info-banner"> <div class="info-banner-content"> <div class="info-banner-main"> <div class="info-section"> <h2>Intel Quick Sync Video Benchmarks</h2> <p>Community-driven database of hardware transcoding performance. Compare FPS, power usage, and efficiency across Intel CPU generations for Plex/Jellyfin transcoding.</p><br> <p>Brought to you by <a href="https://github.com/ironicbadger" target="_blank" rel="noopener noreferrer">ironicbadger</a> and <a href="https://github.com/cptmorgan-rh" target="_blank" rel="noopener noreferrer">cptmorgan</a>.</p> </div> <div class="info-section"> <h3>How to Use</h3> <ul> <li><strong>Filter:</strong> Use the sidebar to filter by CPU model, generation, or test type</li> <li><strong>Click charts:</strong> Click any bar to filter by that generation</li> <li><strong>Compare:</strong> Select a generation to see detailed stats vs 8th Gen baseline</li> </ul> </div> <div class="info-section"> <h3>Submit Your Results</h3> <pre><code>git clone https://github.com/ironicbadger/quicksync_calc.git
 cd quicksync_calc
 ./quicksync-benchmark.sh</code></pre> <p class="info-note">After benchmarks complete, you'll get a link to verify and submit your results. Requires Docker + Intel CPU with Quick Sync. <a href="/about">Full instructions</a></p> </div> </div> <button id="hide-banner" class="hide-banner-btn" title="Hide this banner"> <span class="hide-icon">×</span> </button> </div> </div>  <button id="show-banner" class="show-banner-btn" style="display: none;"> <span>?</span> Info & Submit
-</button> <div class="dashboard-layout"> <!-- Left Sidebar: Filters --> <aside class="sidebar"> <div class="sidebar-header"> <h2>Filters</h2> <button id="clear-filters" class="btn-link">Clear All</button> </div> <!-- Submitter ID --> <div class="filter-section"> <h3>Submitter ID</h3> <input type="text" id="submitter-search" placeholder="Search submitters..." class="search-input"> <div id="submitter-list" class="checkbox-list submitter-list"> <!-- Populated by JS --> </div> </div> <!-- CPU Search --> <div class="filter-section"> <h3>CPU Model</h3> <input type="text" id="cpu-search" placeholder="Search CPUs..." class="search-input"> <div id="cpu-list" class="checkbox-list cpu-list"> <!-- Populated by JS --> </div> </div> <!-- CPU Generation --> <div class="filter-section"> <h3>Generation</h3> <div id="generation-list" class="checkbox-list"> <!-- Populated by JS --> </div> </div> <!-- Architecture --> <div class="filter-section"> <h3>Architecture</h3> <div id="architecture-list" class="checkbox-list"> <!-- Populated by JS --> </div> </div> <!-- Test Type --> <div class="filter-section"> <h3>Test Type</h3> <div id="test-list" class="checkbox-list"> <!-- Populated by JS --> </div> </div> </aside> <!-- Main Content --> <main class="main-content"> <!-- Summary Stats --> <div class="summary-cards"> <div class="card summary-card"> <div class="summary-value" id="total-results">-</div> <div class="summary-label">Total Results</div> </div> <div class="card summary-card"> <div class="summary-value" id="unique-cpus">-</div> <div class="summary-label">Unique CPUs</div> </div> <div class="card summary-card"> <div class="summary-value" id="filtered-results">-</div> <div class="summary-label">Filtered Results</div> </div> <div class="card summary-card"> <div class="summary-value" id="architectures-count">-</div> <div class="summary-label">Architectures</div> </div> </div> <!-- Charts Grid --> <div class="charts-grid"> <div class="chart-container card" data-astro-cid-3wmhvgao> <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--color-text-muted);" data-astro-cid-3wmhvgao>Average FPS by Generation</h3> <div class="chart-wrapper" data-astro-cid-3wmhvgao> <canvas id="fps-chart" data-metric="avg_fps" data-ylabel="Frames per Second" data-astro-cid-3wmhvgao></canvas> </div> </div>  <div class="chart-container card" data-astro-cid-3wmhvgao> <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--color-text-muted);" data-astro-cid-3wmhvgao>Power Usage by Generation</h3> <div class="chart-wrapper" data-astro-cid-3wmhvgao> <canvas id="watts-chart" data-metric="avg_watts" data-ylabel="Watts" data-astro-cid-3wmhvgao></canvas> </div> </div>  <div class="chart-container card" data-astro-cid-3wmhvgao> <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--color-text-muted);" data-astro-cid-3wmhvgao>Efficiency (FPS/Watt) by Generation</h3> <div class="chart-wrapper" data-astro-cid-3wmhvgao> <canvas id="efficiency-chart" data-metric="fps_per_watt" data-ylabel="FPS per Watt" data-astro-cid-3wmhvgao></canvas> </div> </div>  </div> <!-- Generation Stats (shown when single generation selected) --> <div id="generation-stats" class="generation-stats" style="display: none;"> <div class="gen-stats-header"> <h3 id="gen-stats-title">Generation Statistics</h3> <span id="gen-stats-subtitle" class="gen-stats-subtitle"></span> </div> <div class="gen-stats-content"> <!-- Summary metrics row --> <div id="gen-stats-summary" class="gen-stats-summary"> <!-- Populated by JS --> </div> <!-- Comparison charts - stacked --> <div class="gen-stats-charts"> <div class="gen-stats-chart-container"> <canvas id="gen-fps-chart"></canvas> </div> <div class="gen-stats-chart-container"> <canvas id="gen-watts-chart"></canvas> </div> <div class="gen-stats-chart-container"> <canvas id="gen-efficiency-chart"></canvas> </div> </div> </div> </div> <!-- Results Table --> <div class="results-table-wrapper card"> <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"> <h3 style="font-size: 1rem; color: var(--color-text-muted);">
+</button> <div class="dashboard-layout"> <!-- Left Sidebar: Filters --> <aside class="sidebar"> <div class="sidebar-header"> <h2>Filters</h2> <button id="clear-filters" class="btn-link">Clear All</button> </div> <!-- Submitter ID --> <div class="filter-section"> <h3>Submitter ID</h3> <input type="text" id="submitter-search" placeholder="Search submitters..." class="search-input"> <div id="submitter-list" class="checkbox-list submitter-list"> <!-- Populated by JS --> </div> </div> <!-- CPU Search --> <div class="filter-section"> <h3>CPU Model</h3> <input type="text" id="cpu-search" placeholder="Search CPUs..." class="search-input"> <div id="cpu-list" class="checkbox-list cpu-list"> <!-- Populated by JS --> </div> </div> <!-- CPU Generation --> <div class="filter-section"> <h3>Generation</h3> <div id="generation-list" class="checkbox-list"> <!-- Populated by JS --> </div> </div> <!-- Architecture --> <div class="filter-section"> <h3>Architecture</h3> <div id="architecture-list" class="checkbox-list"> <!-- Populated by JS --> </div> </div> <!-- Test Type --> <div class="filter-section"> <h3>Test Type</h3> <div id="test-list" class="checkbox-list"> <!-- Populated by JS --> </div> </div> </aside> <!-- Main Content --> <main class="main-content"> <!-- Summary Stats --> <div class="summary-cards"> <div class="card summary-card"> <div class="summary-value" id="total-results">-</div> <div class="summary-label">Total Results</div> </div> <div class="card summary-card"> <div class="summary-value" id="unique-cpus">-</div> <div class="summary-label">Unique CPUs</div> </div> <div class="card summary-card"> <div class="summary-value" id="filtered-results">-</div> <div class="summary-label">Filtered Results</div> </div> <div class="card summary-card"> <div class="summary-value" id="architectures-count">-</div> <div class="summary-label">Architectures</div> </div> </div> <!-- Charts Grid --> <div class="charts-grid"> <div class="chart-container card" data-astro-cid-3wmhvgao> <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--color-text-muted);" data-astro-cid-3wmhvgao>Average FPS by Generation</h3> <div class="chart-wrapper" data-astro-cid-3wmhvgao> <canvas id="fps-chart" data-metric="avg_fps" data-ylabel="Frames per Second" data-astro-cid-3wmhvgao></canvas> </div> </div>  <div class="chart-container card" data-astro-cid-3wmhvgao> <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--color-text-muted);" data-astro-cid-3wmhvgao>Power Usage by Generation</h3> <div class="chart-wrapper" data-astro-cid-3wmhvgao> <canvas id="watts-chart" data-metric="avg_watts" data-ylabel="Watts" data-astro-cid-3wmhvgao></canvas> </div> </div>  <div class="chart-container card" data-astro-cid-3wmhvgao> <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--color-text-muted);" data-astro-cid-3wmhvgao>Efficiency (FPS/Watt) by Generation</h3> <div class="chart-wrapper" data-astro-cid-3wmhvgao> <canvas id="efficiency-chart" data-metric="fps_per_watt" data-ylabel="FPS per Watt" data-astro-cid-3wmhvgao></canvas> </div> </div>  </div> <!-- Generation Stats (shown when single generation selected) --> <div id="generation-stats" class="generation-stats" style="display: none;"> <div class="gen-stats-header"> <h3 id="gen-stats-title">Generation Statistics</h3> <span id="gen-stats-subtitle" class="gen-stats-subtitle"></span> </div> <div class="gen-stats-content"> <!-- Summary metrics row --> <div id="gen-stats-summary" class="gen-stats-summary"> <!-- Populated by JS --> </div> <!-- Comparison charts - stacked --> <div class="gen-stats-charts"> <div class="gen-stats-chart-container"> <canvas id="gen-fps-chart"></canvas> </div> <div class="gen-stats-chart-container"> <canvas id="gen-watts-chart"></canvas> </div> <div class="gen-stats-chart-container"> <canvas id="gen-efficiency-chart"></canvas> </div> </div> </div> </div> <!-- CPU Stats (shown when CPU is selected) --> <div id="cpu-stats" class="generation-stats cpu-stats-panel" style="display: none;"> <div class="gen-stats-header"> <h3 id="cpu-stats-title">CPU Statistics</h3> <span id="cpu-stats-subtitle" class="gen-stats-subtitle"></span> </div> <div class="gen-stats-content"> <!-- Summary metrics row --> <div id="cpu-stats-summary" class="gen-stats-summary"> <!-- Populated by JS --> </div> <!-- Comparison charts - stacked --> <div class="gen-stats-charts"> <div class="gen-stats-chart-container"> <canvas id="cpu-fps-chart"></canvas> </div> <div class="gen-stats-chart-container"> <canvas id="cpu-watts-chart"></canvas> </div> <div class="gen-stats-chart-container"> <canvas id="cpu-efficiency-chart"></canvas> </div> </div> </div> </div> <!-- Results Table --> <div class="results-table-wrapper card"> <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"> <h3 style="font-size: 1rem; color: var(--color-text-muted);">
 Results <span id="results-count">(loading...)</span> </h3> <div style="display: flex; gap: 0.5rem; align-items: center;"> <label for="results-limit" style="font-size: 0.875rem; color: var(--color-text-muted);">Show:</label> <select id="results-limit"> <option value="25">25</option> <option value="50">50</option> <option value="100" selected>100</option> <option value="250">250</option> </select> </div> </div> <div class="table-scroll"> <table id="results-table"> <thead> <tr> <th data-sort="cpu_raw">CPU</th> <th data-sort="architecture">Architecture</th> <th data-sort="test_name">Test</th> <th data-sort="avg_fps" class="numeric">FPS</th> <th data-sort="avg_watts" class="numeric">Watts</th> <th data-sort="fps_per_watt" class="numeric">FPS/Watt</th> <th data-sort="avg_speed" class="numeric">Speed</th> <th data-sort="score" class="numeric">Score</th> <th data-sort="submitted_at">Submitted</th> </tr> </thead> <tbody id="results-body"> <tr> <td colspan="9" style="text-align: center; padding: 2rem;">Loading...</td> </tr> </tbody> </table> </div> <div class="pagination" style="margin-top: 1rem; display: flex; justify-content: center; gap: 0.5rem;"> <button id="prev-page" class="btn-secondary" disabled>&larr; Previous</button> <span id="page-info" style="padding: 0.5rem 1rem; color: var(--color-text-muted);">Page 1</span> <button id="next-page" class="btn-secondary">Next &rarr;</button> </div> </div>  </main> </div>  </main> <footer style="border-top: 1px solid var(--color-border); padding: 2rem 0; margin-top: 4rem;"> <div class="container" style="text-align: center; color: var(--color-text-muted);"> <p>Intel Quick Sync Video Benchmark Database</p> <p style="margin-top: 0.5rem; font-size: 0.875rem;">
 Data sourced from community submissions &bull;
 <a href="https://github.com/ironicbadger/quicksync_calc">Contribute on GitHub</a> </p> </div> </footer> </body></html>  <script>(function(){const API_URL = "https://quicksync-api.ktz.me";
@@ -315,6 +315,7 @@ Data sourced from community submissions &bull;
       fetchResults(),
       fetchBoxplotData(),
       fetchGenerationStats(),
+      fetchCpuStats(),
     ]);
   }
 
@@ -586,6 +587,200 @@ Data sourced from community submissions &bull;
     }
   }
 
+  // CPU colors for multi-CPU chart - distinct palette
+  const cpuColors = [
+    { bg: 'rgba(34, 197, 94, 0.8)', border: 'rgb(34, 197, 94)' },      // Green
+    { bg: 'rgba(59, 130, 246, 0.8)', border: 'rgb(59, 130, 246)' },    // Blue
+    { bg: 'rgba(168, 85, 247, 0.8)', border: 'rgb(168, 85, 247)' },    // Purple
+    { bg: 'rgba(234, 88, 12, 0.8)', border: 'rgb(234, 88, 12)' },      // Orange
+    { bg: 'rgba(6, 182, 212, 0.8)', border: 'rgb(6, 182, 212)' },      // Cyan
+    { bg: 'rgba(236, 72, 153, 0.8)', border: 'rgb(236, 72, 153)' },    // Pink
+    { bg: 'rgba(202, 138, 4, 0.8)', border: 'rgb(202, 138, 4)' },      // Amber
+    { bg: 'rgba(20, 184, 166, 0.8)', border: 'rgb(20, 184, 166)' },    // Teal
+  ];
+
+  // Fetch and display CPU statistics (when CPUs are filtered)
+  async function fetchCpuStats() {
+    const statsContainer = document.getElementById('cpu-stats');
+    const statsSummary = document.getElementById('cpu-stats-summary');
+    const statsTitle = document.getElementById('cpu-stats-title');
+    const statsSubtitle = document.getElementById('cpu-stats-subtitle');
+
+    // Show when one or more CPUs are selected
+    if (state.filters.cpu.length === 0) {
+      statsContainer.style.display = 'none';
+      // Destroy charts if exist
+      if (window.cpuFpsChart) { window.cpuFpsChart.destroy(); window.cpuFpsChart = null; }
+      if (window.cpuWattsChart) { window.cpuWattsChart.destroy(); window.cpuWattsChart = null; }
+      if (window.cpuEfficiencyChart) { window.cpuEfficiencyChart.destroy(); window.cpuEfficiencyChart = null; }
+      return;
+    }
+
+    const cpus = state.filters.cpu.join('||');
+
+    try {
+      const res = await fetch(`${API_URL}/api/results/cpu-stats?cpu=${encodeURIComponent(cpus)}`);
+      const data = await res.json();
+
+      if (!data.success || !data.data || data.data.length === 0) {
+        statsContainer.style.display = 'none';
+        return;
+      }
+
+      statsContainer.style.display = 'block';
+
+      // Build title
+      const cpuCount = data.data.length;
+      statsTitle.textContent = cpuCount === 1
+        ? `CPU: ${stripIntelBranding(data.data[0].cpu_raw)}`
+        : `Comparing ${cpuCount} CPUs`;
+
+      // Build subtitle with total results
+      const totalResults = data.data.reduce((sum, c) => sum + c.overall.total_results, 0);
+      statsSubtitle.textContent = `${totalResults} benchmark results`;
+
+      // Build comparison table
+      let summaryHtml = `
+        <table class="gen-comparison-table">
+          <thead>
+            <tr>
+              <th>CPU</th>
+              <th>Architecture</th>
+              <th>Avg FPS</th>
+              <th>Avg Watts</th>
+              <th>Efficiency</th>
+              <th>Results</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      // Add row for each CPU
+      data.data.forEach((cpuData, idx) => {
+        const color = cpuColors[idx % cpuColors.length].border;
+        const displayName = stripIntelBranding(cpuData.cpu_raw);
+        summaryHtml += `
+          <tr class="gen-row" style="--gen-color: ${color}">
+            <td class="gen-name">
+              <span class="gen-indicator" style="background: ${color}"></span>
+              <strong title="${cpuData.cpu_raw}">${displayName.length > 30 ? displayName.slice(0, 30) + '...' : displayName}</strong>
+            </td>
+            <td>
+              ${cpuData.architecture ? `<span class="gen-arch">${cpuData.architecture}</span>` : '-'}
+              ${cpuData.cpu_generation ? `<span class="gen-arch">${cpuData.cpu_generation}th Gen</span>` : ''}
+            </td>
+            <td class="gen-metric">
+              <span class="gen-value">${cpuData.overall.avg_fps?.toFixed(1) || '-'}</span>
+            </td>
+            <td class="gen-metric">
+              <span class="gen-value">${cpuData.overall.avg_watts?.toFixed(1) || '-'}</span>
+            </td>
+            <td class="gen-metric">
+              <span class="gen-value">${cpuData.overall.fps_per_watt?.toFixed(1) || '-'}</span>
+            </td>
+            <td class="gen-metric-small">
+              ${cpuData.overall.total_results}
+            </td>
+          </tr>
+        `;
+      });
+
+      summaryHtml += `
+          </tbody>
+        </table>
+      `;
+
+      statsSummary.innerHTML = summaryHtml;
+
+      // Build 3 comparison charts - FPS, Watts, Efficiency
+      const testNames = data.all_tests;
+
+      // Helper to build datasets for a given metric
+      const buildDatasets = (metric) => {
+        return data.data.map((cpuData, idx) => {
+          const colors = cpuColors[idx % cpuColors.length];
+          const displayName = stripIntelBranding(cpuData.cpu_raw);
+          return {
+            label: displayName.length > 20 ? displayName.slice(0, 20) + '...' : displayName,
+            data: testNames.map(testName => {
+              const testInfo = cpuData.by_test.find(t => t.test_name === testName);
+              return testInfo?.[metric] || 0;
+            }),
+            backgroundColor: colors.bg,
+            borderColor: colors.border,
+            borderWidth: 1,
+          };
+        });
+      };
+
+      // Helper to create a chart
+      const createCpuComparisonChart = (canvasId, title, yLabel, datasets) => {
+        const canvas = document.getElementById(canvasId);
+        return new Chart(canvas, {
+          type: 'bar',
+          data: { labels: testNames, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'top',
+                labels: { color: '#f1f5f9', font: { size: 11 } },
+              },
+              title: {
+                display: true,
+                text: title,
+                color: '#f1f5f9',
+                font: { size: 13, weight: '600' },
+              },
+            },
+            scales: {
+              x: {
+                ticks: { color: '#94a3b8', font: { size: 10 } },
+                grid: { color: '#334155' },
+              },
+              y: {
+                ticks: { color: '#94a3b8' },
+                grid: { color: '#334155' },
+                title: { display: true, text: yLabel, color: '#94a3b8' },
+              },
+            },
+          },
+        });
+      };
+
+      // Destroy existing charts
+      if (window.cpuFpsChart) window.cpuFpsChart.destroy();
+      if (window.cpuWattsChart) window.cpuWattsChart.destroy();
+      if (window.cpuEfficiencyChart) window.cpuEfficiencyChart.destroy();
+
+      // Create 3 charts
+      window.cpuFpsChart = createCpuComparisonChart(
+        'cpu-fps-chart',
+        'Average FPS by Test Type',
+        'Frames per Second',
+        buildDatasets('avg_fps')
+      );
+
+      window.cpuWattsChart = createCpuComparisonChart(
+        'cpu-watts-chart',
+        'Average Power Usage by Test Type',
+        'Watts',
+        buildDatasets('avg_watts')
+      );
+
+      window.cpuEfficiencyChart = createCpuComparisonChart(
+        'cpu-efficiency-chart',
+        'Efficiency (FPS per Watt) by Test Type',
+        'FPS/Watt',
+        buildDatasets('fps_per_watt')
+      );
+    } catch (e) {
+      console.error('Failed to fetch CPU stats:', e);
+      statsContainer.style.display = 'none';
+    }
+  }
+
   // Toggle generation filter (called from chart click)
   function toggleGenerationFilter(generation) {
     const genStr = String(generation);
@@ -623,11 +818,30 @@ Data sourced from community submissions &bull;
 
     for (const metric of metrics) {
       try {
+        // Fetch CPU generation data
         const res = await fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=cpu_generation&${params}`);
         const data = await res.json();
 
+        // Also fetch Arc GPU data by architecture
+        const arcParams = new URLSearchParams(params);
+        arcParams.set('architecture', 'Alchemist,Battlemage');
+        const arcRes = await fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=architecture&${arcParams}`);
+        const arcData = await arcRes.json();
+
         if (data.success) {
-          state.boxplotData[metric] = data.boxplot;
+          let boxplotData = data.boxplot;
+
+          // Merge Arc data with "Arc" label (combining Alchemist and Battlemage)
+          if (arcData.success && arcData.boxplot.length > 0) {
+            // Rename Arc architectures to just "Arc" for display
+            const arcResults = arcData.boxplot.map(d => ({
+              ...d,
+              group: 'Arc'
+            }));
+            boxplotData = [...boxplotData, ...arcResults];
+          }
+
+          state.boxplotData[metric] = boxplotData;
           updateChart(metric);
         }
       } catch (e) {
@@ -647,8 +861,11 @@ Data sourced from community submissions &bull;
     const canvas = document.getElementById(chartId);
     const boxplotData = state.boxplotData[metric] || [];
 
-    // Group by generation and sort
-    const generations = [...new Set(boxplotData.map(d => d.group))].sort((a, b) => parseInt(a) - parseInt(b));
+    // Group by generation and sort (put "Arc" at the end)
+    const allGroups = [...new Set(boxplotData.map(d => d.group))];
+    const numericGroups = allGroups.filter(g => !isNaN(parseInt(g))).sort((a, b) => parseInt(a) - parseInt(b));
+    const nonNumericGroups = allGroups.filter(g => isNaN(parseInt(g))).sort();
+    const generations = [...numericGroups, ...nonNumericGroups];
     const tests = [...new Set(boxplotData.map(d => d.test))];
 
     // Build datasets for Chart.js
@@ -681,7 +898,7 @@ Data sourced from community submissions &bull;
     window.charts[chartId] = new Chart(canvas, {
       type: 'bar',
       data: {
-        labels: generations.map(g => `Gen ${g}`),
+        labels: generations.map(g => isNaN(parseInt(g)) ? g : `Gen ${g}`),
         datasets,
       },
       options: {
@@ -703,8 +920,10 @@ Data sourced from community submissions &bull;
             callbacks: {
               title: (items) => {
                 const gen = generations[items[0].dataIndex];
+                const isNumeric = !isNaN(parseInt(gen));
+                const label = isNumeric ? `Gen ${gen}` : gen;
                 const isSelected = selectedGens.includes(String(gen));
-                return `Gen ${gen}${isSelected ? ' (filtered)' : ''} - Click to toggle`;
+                return `${label}${isSelected ? ' (filtered)' : ''}${isNumeric ? ' - Click to toggle' : ''}`;
               }
             }
           }

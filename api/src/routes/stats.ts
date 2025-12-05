@@ -72,6 +72,7 @@ stats.get('/boxplot', async (c) => {
   const metric = c.req.query('metric') || 'avg_fps'; // avg_fps, avg_watts, fps_per_watt
   const groupBy = c.req.query('group_by') || 'cpu_generation';
   const testFilter = c.req.query('test');
+  const archFilter = c.req.query('architecture');
 
   // Validate inputs
   const allowedMetrics = ['avg_fps', 'avg_watts', 'fps_per_watt'];
@@ -80,15 +81,23 @@ stats.get('/boxplot', async (c) => {
   const allowedGroupBy = ['architecture', 'cpu_generation'];
   const groupColumn = allowedGroupBy.includes(groupBy) ? groupBy : 'cpu_generation';
 
-  // Build query
-  let testCondition = '';
+  // Build query conditions
+  let conditions = '';
   const args: (string | number)[] = [vendor];
 
   if (testFilter) {
     const tests = testFilter.split(',').map(t => t.trim()).filter(t => t);
     if (tests.length > 0) {
-      testCondition = ` AND test_name IN (${tests.map(() => '?').join(',')})`;
+      conditions += ` AND test_name IN (${tests.map(() => '?').join(',')})`;
       args.push(...tests);
+    }
+  }
+
+  if (archFilter) {
+    const archs = archFilter.split(',').map(a => a.trim()).filter(a => a);
+    if (archs.length > 0) {
+      conditions += ` AND architecture IN (${archs.map(() => '?').join(',')})`;
+      args.push(...archs);
     }
   }
 
@@ -105,7 +114,7 @@ stats.get('/boxplot', async (c) => {
         AND ${metricColumn} IS NOT NULL
         ${metricColumn === 'avg_watts' ? 'AND avg_watts > 0 AND avg_watts < 50' : ''}
         ${metricColumn === 'fps_per_watt' ? 'AND fps_per_watt IS NOT NULL' : ''}
-        ${testCondition}
+        ${conditions}
       ORDER BY ${groupColumn}, test_name, ${metricColumn}
     `,
     args,
