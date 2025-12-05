@@ -44,9 +44,12 @@ CPU_PATTERNS = [
     (r'i[3579]-10\d{3}[A-Z]?$', 'Comet Lake', 10),
     (r'i[3579]-11\d{2}G', 'Tiger Lake', 11),  # Check G suffix first
     (r'i[3579]-11\d{3}', 'Rocket Lake', 11),
-    (r'i[3579]-12\d{3}', 'Alder Lake', 12),
-    (r'i[3579]-13\d{3}', 'Raptor Lake', 13),
-    (r'i[3579]-14\d{3}', 'Raptor Lake Refresh', 14),
+    (r'i[3579]-12\d{2}[A-Z]+', 'Alder Lake', 12),  # Mobile: i5-1240P (check before desktop)
+    (r'i[3579]-12\d{3}[A-Z]*', 'Alder Lake', 12),  # Desktop: i5-12600K
+    (r'i[3579]-13\d{2}[A-Z]+', 'Raptor Lake', 13),  # Mobile: i5-1340P (check before desktop)
+    (r'i[3579]-13\d{3}[A-Z]*', 'Raptor Lake', 13),  # Desktop: i5-13600K
+    (r'i[3579]-14\d{2}[A-Z]+', 'Raptor Lake Refresh', 14),  # Mobile: i5-1440P (check before desktop)
+    (r'i[3579]-14\d{3}[A-Z]*', 'Raptor Lake Refresh', 14),  # Desktop: i5-14600K
 
     # Ultra series
     (r'Ultra [3579] 1\d{2}[HUP]?', 'Meteor Lake', 1),  # Series 1
