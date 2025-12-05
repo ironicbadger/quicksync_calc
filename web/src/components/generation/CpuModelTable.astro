@@ -9,6 +9,7 @@ interface CpuModel {
   avg_fps: number;
   fps_per_watt: number | null;
   score: number | null;
+  ecc_support?: boolean;
 }
 
 // Get score badge class based on score value
@@ -61,6 +62,7 @@ function stripIntelBranding(cpu: string): string {
             <td class="cpu-name" title={cpu.cpu_raw}>
               {index === 0 && <span class="rank-badge">Top</span>}
               {stripIntelBranding(cpu.cpu_raw)}
+              {cpu.ecc_support && <span class="ecc-badge">ECC</span>}
             </td>
             <td class="numeric">{cpu.result_count}</td>
             <td class="numeric">{cpu.avg_fps.toFixed(1)}</td>
@@ -139,6 +141,19 @@ function stripIntelBranding(cpu: string): string {
     background: linear-gradient(135deg, #ffd700, #ffb700);
     color: #1a1a1a;
     border-radius: 0.25rem;
+  }
+
+  .ecc-badge {
+    display: inline-block;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    padding: 0.0625rem 0.3125rem;
+    margin-left: 0.5rem;
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    border-radius: 0.1875rem;
   }
 
   .empty-state {
