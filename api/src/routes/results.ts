@@ -6,6 +6,21 @@
 import { Hono } from 'hono';
 import { getDb, Env, BenchmarkResult } from '../lib/db';
 
+// Preferred display order for test types in charts
+const TEST_ORDER = ['h264_1080p_cpu', 'h264_1080p', 'h264_4k', 'hevc_8bit', 'hevc_4k_10bit'];
+
+// Sort test names by preferred order, with unknown tests sorted alphabetically at the end
+function sortTestNames(tests: string[]): string[] {
+  return [...tests].sort((a, b) => {
+    const aIdx = TEST_ORDER.indexOf(a);
+    const bIdx = TEST_ORDER.indexOf(b);
+    if (aIdx === -1 && bIdx === -1) return a.localeCompare(b);
+    if (aIdx === -1) return 1;
+    if (bIdx === -1) return -1;
+    return aIdx - bIdx;
+  });
+}
+
 const results = new Hono<{ Bindings: Env }>();
 
 results.get('/', async (c) => {
@@ -408,7 +423,7 @@ results.get('/generation-stats', async (c) => {
   }
 
   // Get all unique test names across all generations
-  const allTests = [...new Set(statsResult.rows.map(r => r.test_name as string))].sort();
+  const allTests = sortTestNames([...new Set(statsResult.rows.map(r => r.test_name as string))]);
 
   // Build response for each selected generation (not baseline)
   const generationsData = generations.sort((a, b) => a - b).map(gen => {
@@ -592,7 +607,7 @@ results.get('/architecture-stats', async (c) => {
   }
 
   // Get all unique test names
-  const allTests = [...new Set(statsResult.rows.map(r => r.test_name as string))].sort();
+  const allTests = sortTestNames([...new Set(statsResult.rows.map(r => r.test_name as string))]);
 
   // Build response for each architecture
   const architecturesData = architectures.map(arch => {
@@ -695,7 +710,7 @@ results.get('/cpu-stats', async (c) => {
   ]);
 
   // Get all unique test names
-  const allTests = [...new Set(statsResult.rows.map(r => r.test_name as string))].sort();
+  const allTests = sortTestNames([...new Set(statsResult.rows.map(r => r.test_name as string))]);
 
   // Build lookup structures
   const overallByCpu: Record<string, {
