@@ -447,4 +447,144 @@ results.get('/generation-stats', async (c) => {
   });
 });
 
+// Get aggregated statistics for specific CPUs
+results.get('/cpu-stats', async (c) => {
+  const db = getDb(c.env);
+  const vendor = c.req.query('vendor') || 'intel';
+  const cpuParam = c.req.query('cpu'); // CPU names separated by ||
+
+  if (!cpuParam) {
+    return c.json({ success: false, error: 'cpu parameter required' }, 400);
+  }
+
+  // Parse CPU names (using || delimiter since CPU names can contain commas)
+  const cpus = cpuParam.split('||').map(c => c.trim()).filter(c => c);
+  if (cpus.length === 0) {
+    return c.json({ success: false, error: 'Invalid CPU names' }, 400);
+  }
+
+  const cpuPlaceholders = cpus.map(() => '?').join(',');
+
+  const [statsResult, overallResult] = await Promise.all([
+    // Stats per CPU per test type
+    db.execute({
+      sql: `
+        SELECT
+          cpu_raw,
+          cpu_generation,
+          architecture,
+          test_name,
+          COUNT(*) as result_count,
+          ROUND(AVG(avg_fps), 1) as avg_fps,
+          ROUND(MIN(avg_fps), 1) as min_fps,
+          ROUND(MAX(avg_fps), 1) as max_fps,
+          ROUND(AVG(CASE WHEN avg_watts > 0 THEN avg_watts ELSE NULL END), 1) as avg_watts,
+          ROUND(AVG(CASE WHEN fps_per_watt > 0 THEN fps_per_watt ELSE NULL END), 2) as fps_per_watt,
+          ROUND(AVG(avg_speed), 2) as avg_speed
+        FROM benchmark_results
+        WHERE vendor = ? AND cpu_raw IN (${cpuPlaceholders})
+        GROUP BY cpu_raw, test_name
+        ORDER BY cpu_raw, test_name
+      `,
+      args: [vendor, ...cpus],
+    }),
+    // Overall stats per CPU
+    db.execute({
+      sql: `
+        SELECT
+          cpu_raw,
+          cpu_generation,
+          architecture,
+          COUNT(*) as total_results,
+          ROUND(AVG(avg_fps), 1) as overall_avg_fps,
+          ROUND(AVG(CASE WHEN avg_watts > 0 THEN avg_watts ELSE NULL END), 1) as overall_avg_watts,
+          ROUND(AVG(CASE WHEN fps_per_watt > 0 THEN fps_per_watt ELSE NULL END), 2) as overall_fps_per_watt
+        FROM benchmark_results
+        WHERE vendor = ? AND cpu_raw IN (${cpuPlaceholders})
+        GROUP BY cpu_raw
+      `,
+      args: [vendor, ...cpus],
+    }),
+  ]);
+
+  // Get all unique test names
+  const allTests = [...new Set(statsResult.rows.map(r => r.test_name as string))].sort();
+
+  // Build lookup structures
+  const overallByCpu: Record<string, {
+    cpu_generation: number | null;
+    architecture: string | null;
+    total_results: number;
+    avg_fps: number;
+    avg_watts: number | null;
+    fps_per_watt: number | null;
+  }> = {};
+
+  for (const row of overallResult.rows) {
+    const cpuName = row.cpu_raw as string;
+    overallByCpu[cpuName] = {
+      cpu_generation: row.cpu_generation as number | null,
+      architecture: row.architecture as string | null,
+      total_results: (row.total_results as number) || 0,
+      avg_fps: (row.overall_avg_fps as number) || 0,
+      avg_watts: row.overall_avg_watts as number | null,
+      fps_per_watt: row.overall_fps_per_watt as number | null,
+    };
+  }
+
+  // Build test data by CPU
+  const byTestByCpu: Record<string, Record<string, {
+    result_count: number;
+    avg_fps: number;
+    min_fps: number;
+    max_fps: number;
+    avg_watts: number | null;
+    fps_per_watt: number | null;
+    avg_speed: number | null;
+  }>> = {};
+
+  for (const row of statsResult.rows) {
+    const cpuName = row.cpu_raw as string;
+    const testName = row.test_name as string;
+
+    if (!byTestByCpu[cpuName]) {
+      byTestByCpu[cpuName] = {};
+    }
+
+    byTestByCpu[cpuName][testName] = {
+      result_count: row.result_count as number,
+      avg_fps: (row.avg_fps as number) || 0,
+      min_fps: (row.min_fps as number) || 0,
+      max_fps: (row.max_fps as number) || 0,
+      avg_watts: row.avg_watts as number | null,
+      fps_per_watt: row.fps_per_watt as number | null,
+      avg_speed: row.avg_speed as number | null,
+    };
+  }
+
+  // Build response for each CPU
+  const cpusData = cpus.map(cpuName => {
+    const overall = overallByCpu[cpuName] || { cpu_generation: null, architecture: null, total_results: 0, avg_fps: 0, avg_watts: null, fps_per_watt: null };
+    const testData = byTestByCpu[cpuName] || {};
+
+    return {
+      cpu_raw: cpuName,
+      cpu_generation: overall.cpu_generation,
+      architecture: overall.architecture,
+      overall,
+      by_test: allTests.map(testName => ({
+        test_name: testName,
+        ...(testData[testName] || { result_count: 0, avg_fps: 0, min_fps: 0, max_fps: 0, avg_watts: null, fps_per_watt: null, avg_speed: null }),
+      })),
+    };
+  });
+
+  return c.json({
+    success: true,
+    cpus: cpus,
+    data: cpusData,
+    all_tests: allTests,
+  });
+});
+
 export default results;

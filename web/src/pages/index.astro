@@ -159,6 +159,32 @@ cd quicksync_calc
         </div>
       </div>
 
+      <!-- CPU Stats (shown when CPU is selected) -->
+      <div id="cpu-stats" class="generation-stats cpu-stats-panel" style="display: none;">
+        <div class="gen-stats-header">
+          <h3 id="cpu-stats-title">CPU Statistics</h3>
+          <span id="cpu-stats-subtitle" class="gen-stats-subtitle"></span>
+        </div>
+        <div class="gen-stats-content">
+          <!-- Summary metrics row -->
+          <div id="cpu-stats-summary" class="gen-stats-summary">
+            <!-- Populated by JS -->
+          </div>
+          <!-- Comparison charts - stacked -->
+          <div class="gen-stats-charts">
+            <div class="gen-stats-chart-container">
+              <canvas id="cpu-fps-chart"></canvas>
+            </div>
+            <div class="gen-stats-chart-container">
+              <canvas id="cpu-watts-chart"></canvas>
+            </div>
+            <div class="gen-stats-chart-container">
+              <canvas id="cpu-efficiency-chart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Results Table -->
       <ResultsTable />
     </main>
@@ -700,6 +726,17 @@ cd quicksync_calc
       height: 180px;
     }
   }
+
+  /* CPU Stats Panel - uses same base styles as generation stats with different accent */
+  .cpu-stats-panel {
+    border-color: #22c55e;
+    background: linear-gradient(135deg, var(--color-bg-secondary) 0%, rgba(34, 197, 94, 0.05) 100%);
+    box-shadow: 0 4px 24px rgba(34, 197, 94, 0.15);
+  }
+
+  .cpu-stats-panel .gen-stats-header h3 {
+    color: #22c55e;
+  }
 </style>
 
 <script define:vars={{ API_URL }}>
@@ -1008,6 +1045,7 @@ cd quicksync_calc
       fetchResults(),
       fetchBoxplotData(),
       fetchGenerationStats(),
+      fetchCpuStats(),
     ]);
   }
 
@@ -1275,6 +1313,200 @@ cd quicksync_calc
       );
     } catch (e) {
       console.error('Failed to fetch generation stats:', e);
+      statsContainer.style.display = 'none';
+    }
+  }
+
+  // CPU colors for multi-CPU chart - distinct palette
+  const cpuColors = [
+    { bg: 'rgba(34, 197, 94, 0.8)', border: 'rgb(34, 197, 94)' },      // Green
+    { bg: 'rgba(59, 130, 246, 0.8)', border: 'rgb(59, 130, 246)' },    // Blue
+    { bg: 'rgba(168, 85, 247, 0.8)', border: 'rgb(168, 85, 247)' },    // Purple
+    { bg: 'rgba(234, 88, 12, 0.8)', border: 'rgb(234, 88, 12)' },      // Orange
+    { bg: 'rgba(6, 182, 212, 0.8)', border: 'rgb(6, 182, 212)' },      // Cyan
+    { bg: 'rgba(236, 72, 153, 0.8)', border: 'rgb(236, 72, 153)' },    // Pink
+    { bg: 'rgba(202, 138, 4, 0.8)', border: 'rgb(202, 138, 4)' },      // Amber
+    { bg: 'rgba(20, 184, 166, 0.8)', border: 'rgb(20, 184, 166)' },    // Teal
+  ];
+
+  // Fetch and display CPU statistics (when CPUs are filtered)
+  async function fetchCpuStats() {
+    const statsContainer = document.getElementById('cpu-stats');
+    const statsSummary = document.getElementById('cpu-stats-summary');
+    const statsTitle = document.getElementById('cpu-stats-title');
+    const statsSubtitle = document.getElementById('cpu-stats-subtitle');
+
+    // Show when one or more CPUs are selected
+    if (state.filters.cpu.length === 0) {
+      statsContainer.style.display = 'none';
+      // Destroy charts if exist
+      if (window.cpuFpsChart) { window.cpuFpsChart.destroy(); window.cpuFpsChart = null; }
+      if (window.cpuWattsChart) { window.cpuWattsChart.destroy(); window.cpuWattsChart = null; }
+      if (window.cpuEfficiencyChart) { window.cpuEfficiencyChart.destroy(); window.cpuEfficiencyChart = null; }
+      return;
+    }
+
+    const cpus = state.filters.cpu.join('||');
+
+    try {
+      const res = await fetch(`${API_URL}/api/results/cpu-stats?cpu=${encodeURIComponent(cpus)}`);
+      const data = await res.json();
+
+      if (!data.success || !data.data || data.data.length === 0) {
+        statsContainer.style.display = 'none';
+        return;
+      }
+
+      statsContainer.style.display = 'block';
+
+      // Build title
+      const cpuCount = data.data.length;
+      statsTitle.textContent = cpuCount === 1
+        ? `CPU: ${stripIntelBranding(data.data[0].cpu_raw)}`
+        : `Comparing ${cpuCount} CPUs`;
+
+      // Build subtitle with total results
+      const totalResults = data.data.reduce((sum, c) => sum + c.overall.total_results, 0);
+      statsSubtitle.textContent = `${totalResults} benchmark results`;
+
+      // Build comparison table
+      let summaryHtml = `
+        <table class="gen-comparison-table">
+          <thead>
+            <tr>
+              <th>CPU</th>
+              <th>Architecture</th>
+              <th>Avg FPS</th>
+              <th>Avg Watts</th>
+              <th>Efficiency</th>
+              <th>Results</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      // Add row for each CPU
+      data.data.forEach((cpuData, idx) => {
+        const color = cpuColors[idx % cpuColors.length].border;
+        const displayName = stripIntelBranding(cpuData.cpu_raw);
+        summaryHtml += `
+          <tr class="gen-row" style="--gen-color: ${color}">
+            <td class="gen-name">
+              <span class="gen-indicator" style="background: ${color}"></span>
+              <strong title="${cpuData.cpu_raw}">${displayName.length > 30 ? displayName.slice(0, 30) + '...' : displayName}</strong>
+            </td>
+            <td>
+              ${cpuData.architecture ? `<span class="gen-arch">${cpuData.architecture}</span>` : '-'}
+              ${cpuData.cpu_generation ? `<span class="gen-arch">${cpuData.cpu_generation}th Gen</span>` : ''}
+            </td>
+            <td class="gen-metric">
+              <span class="gen-value">${cpuData.overall.avg_fps?.toFixed(1) || '-'}</span>
+            </td>
+            <td class="gen-metric">
+              <span class="gen-value">${cpuData.overall.avg_watts?.toFixed(1) || '-'}</span>
+            </td>
+            <td class="gen-metric">
+              <span class="gen-value">${cpuData.overall.fps_per_watt?.toFixed(1) || '-'}</span>
+            </td>
+            <td class="gen-metric-small">
+              ${cpuData.overall.total_results}
+            </td>
+          </tr>
+        `;
+      });
+
+      summaryHtml += `
+          </tbody>
+        </table>
+      `;
+
+      statsSummary.innerHTML = summaryHtml;
+
+      // Build 3 comparison charts - FPS, Watts, Efficiency
+      const testNames = data.all_tests;
+
+      // Helper to build datasets for a given metric
+      const buildDatasets = (metric) => {
+        return data.data.map((cpuData, idx) => {
+          const colors = cpuColors[idx % cpuColors.length];
+          const displayName = stripIntelBranding(cpuData.cpu_raw);
+          return {
+            label: displayName.length > 20 ? displayName.slice(0, 20) + '...' : displayName,
+            data: testNames.map(testName => {
+              const testInfo = cpuData.by_test.find(t => t.test_name === testName);
+              return testInfo?.[metric] || 0;
+            }),
+            backgroundColor: colors.bg,
+            borderColor: colors.border,
+            borderWidth: 1,
+          };
+        });
+      };
+
+      // Helper to create a chart
+      const createCpuComparisonChart = (canvasId, title, yLabel, datasets) => {
+        const canvas = document.getElementById(canvasId);
+        return new Chart(canvas, {
+          type: 'bar',
+          data: { labels: testNames, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'top',
+                labels: { color: '#f1f5f9', font: { size: 11 } },
+              },
+              title: {
+                display: true,
+                text: title,
+                color: '#f1f5f9',
+                font: { size: 13, weight: '600' },
+              },
+            },
+            scales: {
+              x: {
+                ticks: { color: '#94a3b8', font: { size: 10 } },
+                grid: { color: '#334155' },
+              },
+              y: {
+                ticks: { color: '#94a3b8' },
+                grid: { color: '#334155' },
+                title: { display: true, text: yLabel, color: '#94a3b8' },
+              },
+            },
+          },
+        });
+      };
+
+      // Destroy existing charts
+      if (window.cpuFpsChart) window.cpuFpsChart.destroy();
+      if (window.cpuWattsChart) window.cpuWattsChart.destroy();
+      if (window.cpuEfficiencyChart) window.cpuEfficiencyChart.destroy();
+
+      // Create 3 charts
+      window.cpuFpsChart = createCpuComparisonChart(
+        'cpu-fps-chart',
+        'Average FPS by Test Type',
+        'Frames per Second',
+        buildDatasets('avg_fps')
+      );
+
+      window.cpuWattsChart = createCpuComparisonChart(
+        'cpu-watts-chart',
+        'Average Power Usage by Test Type',
+        'Watts',
+        buildDatasets('avg_watts')
+      );
+
+      window.cpuEfficiencyChart = createCpuComparisonChart(
+        'cpu-efficiency-chart',
+        'Efficiency (FPS per Watt) by Test Type',
+        'FPS/Watt',
+        buildDatasets('fps_per_watt')
+      );
+    } catch (e) {
+      console.error('Failed to fetch CPU stats:', e);
       statsContainer.style.display = 'none';
     }
   }
