@@ -26,7 +26,7 @@ The website provides:
 - `jq` (for JSON parsing)
 - `bc` (for calculations)
 
-Designed for Linux. Tested on Proxmox 8 and Ubuntu 22.04.
+Designed for Linux. Tested on Proxmox 9 and Ubuntu 24.04 LTS.
 
 This should be run as root with no other applications/containers running that would utilize Quick Sync. This includes Desktop Environments.
 
