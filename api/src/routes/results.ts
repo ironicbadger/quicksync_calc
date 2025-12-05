@@ -239,27 +239,29 @@ results.get('/filter-counts', async (c) => {
     cpuArgs.push(...selectedTests);
   }
 
+  // Count distinct submissions (by timestamp minute), not individual test rows
+  // Each benchmark run submits ~5 tests, so we group by timestamp to count runs
+  const distinctCount = `COUNT(DISTINCT substr(submitted_at, 1, 16))`;
+
   const [genCounts, archCounts, testCounts, cpuCounts, submitterCounts] = await Promise.all([
     db.execute({
-      sql: `SELECT cpu_generation as value, COUNT(*) as count FROM benchmark_results WHERE ${genConditions.join(' AND ')} AND cpu_generation IS NOT NULL GROUP BY cpu_generation`,
+      sql: `SELECT cpu_generation as value, ${distinctCount} as count FROM benchmark_results WHERE ${genConditions.join(' AND ')} AND cpu_generation IS NOT NULL GROUP BY cpu_generation`,
       args: genArgs,
     }),
     db.execute({
-      sql: `SELECT architecture as value, COUNT(*) as count FROM benchmark_results WHERE ${archConditions.join(' AND ')} AND architecture IS NOT NULL GROUP BY architecture`,
+      sql: `SELECT architecture as value, ${distinctCount} as count FROM benchmark_results WHERE ${archConditions.join(' AND ')} AND architecture IS NOT NULL GROUP BY architecture`,
       args: archArgs,
     }),
     db.execute({
-      sql: `SELECT test_name as value, COUNT(*) as count FROM benchmark_results WHERE ${testConditions.join(' AND ')} GROUP BY test_name`,
+      sql: `SELECT test_name as value, ${distinctCount} as count FROM benchmark_results WHERE ${testConditions.join(' AND ')} GROUP BY test_name`,
       args: testArgs,
     }),
     db.execute({
-      sql: `SELECT cpu_raw as value, COUNT(*) as count FROM benchmark_results WHERE ${cpuConditions.join(' AND ')} GROUP BY cpu_raw ORDER BY count DESC LIMIT 100`,
+      sql: `SELECT cpu_raw as value, ${distinctCount} as count FROM benchmark_results WHERE ${cpuConditions.join(' AND ')} GROUP BY cpu_raw ORDER BY count DESC LIMIT 100`,
       args: cpuArgs,
     }),
     db.execute({
-      // Count distinct submissions (by timestamp minute), not individual test rows
-      // Each benchmark run submits ~5 tests, so we group by submitter + timestamp
-      sql: `SELECT submitter_id as value, COUNT(DISTINCT substr(submitted_at, 1, 16)) as count FROM benchmark_results WHERE ${baseConditions.join(' AND ')} AND submitter_id IS NOT NULL AND submitter_id != '' GROUP BY submitter_id ORDER BY count DESC LIMIT 50`,
+      sql: `SELECT submitter_id as value, ${distinctCount} as count FROM benchmark_results WHERE ${baseConditions.join(' AND ')} AND submitter_id IS NOT NULL AND submitter_id != '' GROUP BY submitter_id ORDER BY count DESC LIMIT 50`,
       args: baseArgs,
     }),
   ]);
