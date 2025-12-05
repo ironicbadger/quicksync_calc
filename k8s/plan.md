@@ -13,21 +13,21 @@ flowchart TB
         B[kubectl logs -f]
     end
 
-    subgraph K8s["K8s Cluster (Talos/etc)"]
+    subgraph K8s["K8s Cluster - Talos etc"]
         subgraph NS["Namespace: quicksync-benchmark"]
             subgraph Job["Job: quicksync-benchmark"]
                 subgraph Init["Init Containers"]
-                    C[1. check-qsv<br/>Validate QSV works]
-                    D[2. download-videos<br/>Fetch ~1.8GB test files]
+                    C["1. check-qsv<br/>Validate QSV works"]
+                    D["2. download-videos<br/>Fetch ~1.8GB test files"]
                 end
-                subgraph Containers["Containers (parallel)"]
-                    E[benchmark<br/>Run FFmpeg tests<br/>Submit results]
-                    F[gpu-monitor<br/>intel_gpu_top sidecar<br/>Collect power metrics]
+                subgraph Containers["Containers - parallel"]
+                    E["benchmark<br/>Run FFmpeg tests<br/>Submit results"]
+                    F["gpu-monitor<br/>intel_gpu_top sidecar<br/>Collect power metrics"]
                 end
             end
-            V[(videos<br/>emptyDir)]
-            M[(gpu-metrics<br/>emptyDir)]
-            DRI[/dev/dri<br/>hostPath]
+            V[("videos<br/>emptyDir")]
+            M[("gpu-metrics<br/>emptyDir")]
+            DRI["dev-dri<br/>hostPath"]
         end
     end
 
@@ -38,7 +38,7 @@ flowchart TB
     V --> E
     DRI --> E
     DRI --> F
-    E <-->|start/stop signals| M
+    E <-->|"start/stop signals"| M
     M <--> F
 ```
 
