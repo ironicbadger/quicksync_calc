@@ -43,6 +43,7 @@ Full instructions available at [blog.ktz.me](https://blog.ktz.me/i-need-your-hel
 
 ```bash
 # Connect to the system you want to benchmark (likely via ssh)
+# This assume that this user has permissions to execute a privileged docker container
 ssh user@hostname
 
 # Install dependencies (tested on Proxmox 8 + Ubuntu 22.04)
@@ -51,9 +52,6 @@ apt install docker.io jq bc intel-gpu-tools git curl
 # Clone the repository
 git clone https://github.com/ironicbadger/quicksync_calc.git
 cd quicksync_calc
-
-# Download the test videos
-./video-download.sh
 
 # Run the benchmark
 ./quicksync-benchmark.sh
@@ -65,13 +63,13 @@ You can automatically submit your results to the online database:
 
 ```bash
 # Run benchmark and submit results
-QUICKSYNC_SUBMIT=1 ./quicksync-benchmark.sh
+./quicksync-benchmark.sh
 
 # Submit with your own identifier (for filtering your results later)
-QUICKSYNC_ID="my_homelab" QUICKSYNC_SUBMIT=1 ./quicksync-benchmark.sh
+QUICKSYNC_ID="my_homelab" ./quicksync-benchmark.sh
 ```
 
-Alternatively, you can still manually copy results to the [GitHub Gist](https://gist.github.com/ironicbadger/5da9b321acbe6b6b53070437023b844d).
+deprecated ~~Alternatively, you can still manually copy results to the [GitHub Gist](https://gist.github.com/ironicbadger/5da9b321acbe6b6b53070437023b844d).~~
 
 ## Sample Output
 
