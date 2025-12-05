@@ -32,6 +32,7 @@ results.get('/', async (c) => {
   const testName = c.req.query('test');              // e.g., "h264_1080p,hevc_8bit"
   const cpuRaw = c.req.query('cpu');                 // e.g., "i5-8500||i7-12700" (|| delimiter)
   const submitterId = c.req.query('submitter_id');
+  const ecc = c.req.query('ecc');                    // e.g., "yes" or "no" or "yes,no"
   const minFps = c.req.query('min_fps');
   const maxFps = c.req.query('max_fps');
   const minWatts = c.req.query('min_watts');
@@ -84,6 +85,21 @@ results.get('/', async (c) => {
   if (submitterId) {
     conditions.push('submitter_id = ?');
     args.push(submitterId);
+  }
+
+  if (ecc) {
+    const eccValues = ecc.split(',').map(e => e.trim().toLowerCase()).filter(e => e === 'yes' || e === 'no');
+    if (eccValues.length > 0) {
+      // Join with cpu_features table to filter by ECC support
+      const eccConditions: string[] = [];
+      if (eccValues.includes('yes')) {
+        eccConditions.push('cf.ecc_support = 1');
+      }
+      if (eccValues.includes('no')) {
+        eccConditions.push('(cf.ecc_support = 0 OR cf.ecc_support IS NULL)');
+      }
+      conditions.push(`cpu_raw IN (SELECT cpu_raw FROM cpu_features cf WHERE ${eccConditions.join(' OR ')})`);
+    }
   }
 
   if (minFps) {
@@ -192,6 +208,7 @@ results.get('/filter-counts', async (c) => {
   const generation = c.req.query('generation');
   const architecture = c.req.query('architecture');
   const testName = c.req.query('test');
+  const ecc = c.req.query('ecc');
 
   // Build base conditions
   const baseConditions: string[] = ['vendor = ?'];
@@ -201,6 +218,7 @@ results.get('/filter-counts', async (c) => {
   const selectedGens = generation ? generation.split(',').map(g => parseInt(g.trim(), 10)).filter(g => !isNaN(g)) : [];
   const selectedArchs = architecture ? architecture.split(',').map(a => a.trim()).filter(a => a) : [];
   const selectedTests = testName ? testName.split(',').map(t => t.trim()).filter(t => t) : [];
+  const selectedEcc = ecc ? ecc.split(',').map(e => e.trim().toLowerCase()).filter(e => e === 'yes' || e === 'no') : [];
 
   // Count generations (filtered by architecture and test)
   const genConditions = [...baseConditions];
@@ -258,7 +276,23 @@ results.get('/filter-counts', async (c) => {
   // Each benchmark run submits ~5 tests, so we group by timestamp to count runs
   const distinctCount = `COUNT(DISTINCT substr(submitted_at, 1, 16))`;
 
-  const [genCounts, archCounts, testCounts, cpuCounts, submitterCounts] = await Promise.all([
+  // Build ECC filter conditions (filtered by generation, architecture, and test)
+  const eccConditions = [...baseConditions];
+  const eccArgs = [...baseArgs];
+  if (selectedGens.length > 0) {
+    eccConditions.push(`cpu_generation IN (${selectedGens.map(() => '?').join(',')})`);
+    eccArgs.push(...selectedGens);
+  }
+  if (selectedArchs.length > 0) {
+    eccConditions.push(`architecture IN (${selectedArchs.map(() => '?').join(',')})`);
+    eccArgs.push(...selectedArchs);
+  }
+  if (selectedTests.length > 0) {
+    eccConditions.push(`test_name IN (${selectedTests.map(() => '?').join(',')})`);
+    eccArgs.push(...selectedTests);
+  }
+
+  const [genCounts, archCounts, testCounts, cpuCounts, submitterCounts, eccYesCount, eccNoCount] = await Promise.all([
     db.execute({
       sql: `SELECT cpu_generation as value, ${distinctCount} as count FROM benchmark_results WHERE ${genConditions.join(' AND ')} AND cpu_generation IS NOT NULL GROUP BY cpu_generation`,
       args: genArgs,
@@ -279,6 +313,20 @@ results.get('/filter-counts', async (c) => {
       sql: `SELECT submitter_id as value, ${distinctCount} as count FROM benchmark_results WHERE ${baseConditions.join(' AND ')} AND submitter_id IS NOT NULL AND submitter_id != '' GROUP BY submitter_id ORDER BY count DESC LIMIT 50`,
       args: baseArgs,
     }),
+    // Count CPUs with ECC support
+    db.execute({
+      sql: `SELECT ${distinctCount} as count FROM benchmark_results br
+            WHERE ${eccConditions.join(' AND ')}
+            AND br.cpu_raw IN (SELECT cpu_raw FROM cpu_features WHERE ecc_support = 1)`,
+      args: eccArgs,
+    }),
+    // Count CPUs without ECC support (including those not in cpu_features table)
+    db.execute({
+      sql: `SELECT ${distinctCount} as count FROM benchmark_results br
+            WHERE ${eccConditions.join(' AND ')}
+            AND br.cpu_raw IN (SELECT cpu_raw FROM cpu_features WHERE ecc_support = 0 OR ecc_support IS NULL)`,
+      args: eccArgs,
+    }),
   ]);
 
   return c.json({
@@ -289,6 +337,10 @@ results.get('/filter-counts', async (c) => {
       tests: Object.fromEntries(testCounts.rows.map(r => [r.value, r.count])),
       cpus: Object.fromEntries(cpuCounts.rows.map(r => [r.value, r.count])),
       submitters: Object.fromEntries(submitterCounts.rows.map(r => [r.value, r.count])),
+      ecc: {
+        yes: eccYesCount.rows[0]?.count || 0,
+        no: eccNoCount.rows[0]?.count || 0,
+      },
     },
   });
 });

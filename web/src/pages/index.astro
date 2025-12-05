@@ -102,6 +102,23 @@ cd quicksync_calc
           <!-- Populated by JS -->
         </div>
       </div>
+
+      <!-- ECC Support -->
+      <div class="filter-section">
+        <h3>ECC Support</h3>
+        <div id="ecc-list" class="checkbox-list">
+          <label class="checkbox-item" data-value="yes">
+            <input type="checkbox" value="yes" data-filter="ecc" />
+            <span>ECC Supported</span>
+            <span class="count" id="ecc-yes-count"></span>
+          </label>
+          <label class="checkbox-item" data-value="no">
+            <input type="checkbox" value="no" data-filter="ecc" />
+            <span>No ECC</span>
+            <span class="count" id="ecc-no-count"></span>
+          </label>
+        </div>
+      </div>
     </aside>
 
     <!-- Main Content -->
@@ -767,6 +784,7 @@ cd quicksync_calc
       test: [],
       cpu: [],
       submitter: [],
+      ecc: [],
     },
     filterOptions: {
       generations: [],
@@ -842,6 +860,9 @@ cd quicksync_calc
     }
     if (state.filters.test.length > 0) {
       params.set('test', state.filters.test.join(','));
+    }
+    if (state.filters.ecc.length > 0) {
+      params.set('ecc', state.filters.ecc.join(','));
     }
 
     try {
@@ -958,6 +979,11 @@ cd quicksync_calc
     // Update CPU and submitter lists with counts
     renderCpuList(document.getElementById('cpu-search').value);
     renderSubmitterList(document.getElementById('submitter-search').value);
+
+    // Update ECC counts
+    const eccCounts = state.filterCounts.ecc || {};
+    document.getElementById('ecc-yes-count').textContent = `(${eccCounts.yes || 0})`;
+    document.getElementById('ecc-no-count').textContent = `(${eccCounts.no || 0})`;
   }
 
   // Render submitter list
@@ -1962,6 +1988,9 @@ cd quicksync_calc
     if (state.filters.submitter.length > 0) {
       params.set('submitter_id', state.filters.submitter[0]); // Single submitter filter
     }
+    if (state.filters.ecc.length > 0) {
+      params.set('ecc', state.filters.ecc.join(','));
+    }
 
     // Score sorting is done client-side since scores aren't in the database
     const sortingByScore = state.sort.column === 'score';
@@ -2054,7 +2083,7 @@ cd quicksync_calc
 
   // Clear all filters
   function clearFilters() {
-    state.filters = { generation: [], architecture: [], test: [], cpu: [], submitter: [] };
+    state.filters = { generation: [], architecture: [], test: [], cpu: [], submitter: [], ecc: [] };
     state.pagination.offset = 0;
 
     // Uncheck all checkboxes
@@ -2082,6 +2111,11 @@ cd quicksync_calc
     // CPU search
     document.getElementById('cpu-search').addEventListener('input', (e) => {
       renderCpuList(e.target.value);
+    });
+
+    // ECC filter checkboxes
+    document.querySelectorAll('#ecc-list [data-filter="ecc"]').forEach(cb => {
+      cb.addEventListener('change', handleFilterChange);
     });
 
     // Sort columns
