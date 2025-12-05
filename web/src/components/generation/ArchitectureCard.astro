@@ -1,0 +1,321 @@
+---
+/**
+ * ArchitectureCard - Shows iGPU name, EU count, die layout, process node
+ * Supports multiple architecture variants (e.g., 12th-14th gen have different dies)
+ */
+
+interface ArchVariant {
+  name: string | null;
+  codename: string | null;
+  pattern: string | null;
+  release_year: number | null;
+  igpu_name: string | null;
+  igpu_codename: string | null;
+  process_nm: string | null;
+  max_p_cores: number | null;
+  max_e_cores: number | null;
+  tdp_range: string | null;
+  die_layout: string | null;
+  gpu_eu_count: string | null;
+}
+
+interface CpuModel {
+  cpu_raw: string;
+  result_count: number;
+  avg_fps: number;
+  fps_per_watt: number | null;
+  score: number | null;
+}
+
+interface Props {
+  architecture: ArchVariant;
+  variants?: ArchVariant[];
+  hasMultipleVariants?: boolean;
+  cpuModels?: CpuModel[];
+}
+
+const { architecture, variants, hasMultipleVariants, cpuModels } = Astro.props;
+
+// If we have multiple variants, show them all
+const displayVariants = hasMultipleVariants && variants && variants.length > 1 ? variants : [architecture];
+
+// Build specs for a single variant
+function buildSpecs(arch: ArchVariant) {
+  return [
+    { label: 'iGPU', value: arch.igpu_name, sublabel: arch.igpu_codename },
+    { label: 'EU Count', value: arch.gpu_eu_count },
+    { label: 'Process', value: arch.process_nm },
+    { label: 'Max P-Cores', value: arch.max_p_cores?.toString() },
+    { label: 'Max E-Cores', value: arch.max_e_cores !== null ? arch.max_e_cores.toString() : null },
+    { label: 'TDP Range', value: arch.tdp_range },
+    { label: 'Die Layout', value: arch.die_layout },
+  ].filter(spec => spec.value);
+}
+
+// Match CPUs to variants based on pattern
+function getCpusForVariant(variant: ArchVariant, allCpus: CpuModel[]): CpuModel[] {
+  if (!variant.pattern || !allCpus || allCpus.length === 0) return [];
+
+  try {
+    const regex = new RegExp(variant.pattern, 'i');
+    return allCpus.filter(cpu => regex.test(cpu.cpu_raw));
+  } catch {
+    return [];
+  }
+}
+
+// Strip Intel branding for cleaner display
+function stripCpuBranding(cpu: string): string {
+  return cpu
+    .replace(/Intel\(R\)\s*/gi, '')
+    .replace(/Core\(TM\)\s*/gi, '')
+    .replace(/\s+CPU\s*@\s*[\d.]+GHz/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+---
+
+<div class="architecture-card">
+  {displayVariants.length > 1 ? (
+    <>
+      <div class="multi-variant-header">
+        <h3 class="arch-name">{architecture.name || 'Unknown'}</h3>
+        <span class="variant-badge">{displayVariants.length} die variants</span>
+      </div>
+      <p class="variant-intro">
+        This generation uses different silicon depending on CPU model. Lower-tier chips (i3, i5 non-K) use a different die than higher-tier chips (i5-K, i7, i9).
+      </p>
+      <div class="variants-container">
+        {displayVariants.map((variant) => {
+          const variantCpus = getCpusForVariant(variant, cpuModels || []);
+          return (
+            <div class="variant-card">
+              <div class="variant-header">
+                <span class="variant-codename">{variant.codename}</span>
+                {variant.release_year && <span class="variant-year">{variant.release_year}</span>}
+                {variantCpus.length > 0 && (
+                  <span class="variant-cpu-count">{variantCpus.length} CPU{variantCpus.length !== 1 ? 's' : ''} tested</span>
+                )}
+              </div>
+              <div class="specs-grid">
+                {buildSpecs(variant).map(spec => (
+                  <div class="spec-item">
+                    <span class="spec-label">{spec.label}</span>
+                    <span class="spec-value">{spec.value}</span>
+                    {spec.sublabel && (
+                      <span class="spec-sublabel">{spec.sublabel}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {variantCpus.length > 0 && (
+                <div class="variant-cpus">
+                  <span class="variant-cpus-label">Tested CPUs using this die:</span>
+                  <div class="variant-cpus-list">
+                    {variantCpus.map(cpu => (
+                      <span class="variant-cpu-chip">{stripCpuBranding(cpu.cpu_raw)}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  ) : (
+    <>
+      <div class="card-header">
+        <h3 class="arch-name">{architecture.name || 'Unknown'}</h3>
+        {architecture.codename && (
+          <span class="arch-codename">{architecture.codename}</span>
+        )}
+        {architecture.release_year && (
+          <span class="arch-year">{architecture.release_year}</span>
+        )}
+      </div>
+
+      <div class="specs-grid">
+        {buildSpecs(architecture).map(spec => (
+          <div class="spec-item">
+            <span class="spec-label">{spec.label}</span>
+            <span class="spec-value">{spec.value}</span>
+            {spec.sublabel && (
+              <span class="spec-sublabel">{spec.sublabel}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
+  )}
+</div>
+
+<style>
+  .architecture-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 1.25rem;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .multi-variant-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .variant-badge {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.25rem 0.5rem;
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border-radius: 0.25rem;
+  }
+
+  .variant-intro {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    margin-bottom: 1rem;
+    line-height: 1.5;
+  }
+
+  .variants-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .variant-card {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    padding: 1rem;
+  }
+
+  .variant-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .variant-codename {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-accent);
+    background: rgba(59, 130, 246, 0.1);
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+  }
+
+  .variant-year {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+  }
+
+  .variant-cpu-count {
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
+    margin-left: auto;
+  }
+
+  .variant-cpus {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .variant-cpus-label {
+    display: block;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.5rem;
+  }
+
+  .variant-cpus-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  .variant-cpu-chip {
+    display: inline-block;
+    font-size: 0.75rem;
+    padding: 0.1875rem 0.5rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 0.25rem;
+    color: var(--color-text);
+  }
+
+  .arch-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0;
+  }
+
+  .arch-codename {
+    font-size: 0.875rem;
+    color: var(--color-accent);
+    font-weight: 500;
+    background: rgba(59, 130, 246, 0.1);
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+  }
+
+  .arch-year {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  .specs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .spec-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .spec-label {
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+  }
+
+  .spec-value {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text);
+  }
+
+  .spec-sublabel {
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
+  }
+
+  @media (max-width: 480px) {
+    .specs-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>

@@ -1,0 +1,474 @@
+---
+/**
+ * Arc Battlemage (B-Series) Page
+ */
+import Layout from '../../../layouts/Layout.astro';
+import CodecMatrix from '../../../components/generation/CodecMatrix.astro';
+import ArchitectureCard from '../../../components/generation/ArchitectureCard.astro';
+
+const API_BASE = import.meta.env.PUBLIC_API_URL || 'https://quicksync-api.ktz.me';
+
+let arcData: any = null;
+let error: string | null = null;
+
+try {
+  const response = await fetch(`${API_BASE}/api/results/arc-models?architecture=Arc Battlemage`);
+  if (response.ok) {
+    arcData = await response.json();
+    if (!arcData.success) {
+      error = arcData.error || 'Failed to load Arc Battlemage data';
+    }
+  } else {
+    error = `API error: ${response.status}`;
+  }
+} catch (e) {
+  error = 'Failed to connect to API';
+}
+
+const archInfo = arcData?.architectures?.find((a: any) => a.architecture === 'Arc Battlemage');
+const codecSupport = archInfo?.codec_support || {
+  h264_encode: true,
+  hevc_8bit_encode: true,
+  hevc_10bit_encode: true,
+  vp9_encode: true,
+  av1_encode: true,
+};
+
+// Map architecture info to the format ArchitectureCard expects
+const architectureData = archInfo ? {
+  name: 'Arc Battlemage',
+  codename: archInfo.codename || 'BMG',
+  release_year: archInfo.release_year || 2024,
+  igpu_name: archInfo.igpu_name || 'Intel Arc B-Series',
+  igpu_codename: archInfo.igpu_codename || 'Xe2-HPG',
+  process_nm: archInfo.process_nm || 'TSMC N4',
+  max_p_cores: null,
+  max_e_cores: null,
+  tdp_range: archInfo.tdp_range || '150W',
+  die_layout: archInfo.die_layout || 'Discrete GPU (BMG-G21)',
+  gpu_eu_count: archInfo.gpu_eu_count || '160 EU',
+} : null;
+
+function cleanModelName(name: string): string {
+  return name.replace(/^Intel\s*/i, '').replace(/^Arc\s*/i, '').trim();
+}
+---
+
+<Layout title="Arc Battlemage (B-Series) - QuickSync Benchmarks">
+  <div class="container">
+    <div class="page-header">
+      <h1>Arc Battlemage</h1>
+      <p class="subtitle">Intel's second-generation discrete GPUs (B-Series)</p>
+    </div>
+
+    {error ? (
+      <div class="error-state card">
+        <p>{error}</p>
+        <a href="/gpu/arc/all">&larr; Back to All Arc GPUs</a>
+      </div>
+    ) : arcData ? (
+      <>
+        {/* TL;DR */}
+        <section class="tldr card">
+          <h2>TL;DR</h2>
+          <p>
+            <strong>Arc Battlemage</strong> (codenamed BMG) is Intel's second-generation discrete GPU architecture,
+            launching in late 2024. Built on the Xe2 architecture and TSMC N4 process, Battlemage brings
+            significant efficiency improvements over Alchemist while maintaining <strong>full AV1 hardware encoding</strong>
+            support. The B580 launched at $249 targeting mainstream gaming and content creation.
+          </p>
+        </section>
+
+        {/* Navigation tabs */}
+        <nav class="arch-nav">
+          <a href="/gpu/arc/all" class="arch-tab">All Models</a>
+          <a href="/gpu/arc/alchemist" class="arch-tab">Alchemist (A-Series)</a>
+          <a href="/gpu/arc/battlemage" class="arch-tab active">Battlemage (B-Series)</a>
+        </nav>
+
+        {/* Architecture Details */}
+        <div class="info-grid">
+          {architectureData && (
+            <section class="card">
+              <h2>Architecture</h2>
+              <ArchitectureCard architecture={architectureData} />
+            </section>
+          )}
+
+          <section class="card">
+            <h2>Codec Support</h2>
+            <CodecMatrix codecSupport={codecSupport} />
+          </section>
+        </div>
+
+        {/* Models */}
+        <section class="models-section card">
+          <h2>
+            B-Series Models
+            <span class="model-count">{arcData.models.length} {arcData.models.length === 1 ? 'model' : 'models'}</span>
+          </h2>
+
+          {arcData.models.length === 0 ? (
+            <p class="no-data">
+              No benchmark data available yet for Battlemage GPUs.
+              <br />
+              <a href="/about">Learn how to contribute your results</a>.
+            </p>
+          ) : (
+            <div class="models-grid">
+              {arcData.models.map((model: any) => (
+                <div class="model-card">
+                  <h3 class="model-name">{cleanModelName(model.model_name)}</h3>
+                  <div class="model-stats">
+                    <span class="stat-item">
+                      <span class="stat-label">Results</span>
+                      <span class="stat-value">{model.total_results}</span>
+                    </span>
+                  </div>
+
+                  {model.by_test.length > 0 && (
+                    <table class="model-results">
+                      <thead>
+                        <tr>
+                          <th>Test</th>
+                          <th class="numeric">FPS</th>
+                          <th class="numeric">FPS/W</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {model.by_test.map((test: any) => (
+                          <tr>
+                            <td>
+                              <span class:list={['test-badge', test.test_name.includes('hevc') ? 'hevc' : test.test_name.includes('av1') ? 'av1' : 'h264']}>
+                                {test.test_name}
+                              </span>
+                            </td>
+                            <td class="numeric">{test.avg_fps?.toFixed(1) || '—'}</td>
+                            <td class="numeric">{test.fps_per_watt?.toFixed(2) || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Known Models Info */}
+        <section class="card">
+          <h2>Battlemage Model Lineup</h2>
+          <table class="specs-table">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>GPU Die</th>
+                <th>Xe2-Cores</th>
+                <th>VRAM</th>
+                <th>TDP</th>
+                <th>MSRP</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Arc B580</td>
+                <td>BMG-G21</td>
+                <td>20</td>
+                <td>12GB GDDR6</td>
+                <td>150W</td>
+                <td>$249</td>
+              </tr>
+              <tr class="upcoming">
+                <td>Arc B570</td>
+                <td>BMG-G21</td>
+                <td>18</td>
+                <td>10GB GDDR6</td>
+                <td>150W</td>
+                <td>$219 (expected)</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="specs-note">* B570 specs are based on early reports and may change at launch.</p>
+        </section>
+
+        {/* What's New */}
+        <section class="card">
+          <h2>What's New in Xe2</h2>
+          <ul class="feature-list">
+            <li><strong>Xe2-HPG Architecture</strong> - Second-generation discrete GPU design</li>
+            <li><strong>TSMC N4 Process</strong> - Improved power efficiency over N6</li>
+            <li><strong>12GB VRAM</strong> - More memory than competing GPUs at this price</li>
+            <li><strong>XeSS 2 / Frame Generation</strong> - New AI-powered upscaling and frame generation</li>
+            <li><strong>Hardware Ray Tracing</strong> - Improved RT performance</li>
+            <li><strong>Full Media Engine</strong> - AV1, HEVC 10-bit, VP9 encode support</li>
+          </ul>
+        </section>
+
+        {/* Pricing */}
+        <section class="pricing-section card">
+          <h2>Find Arc Battlemage GPUs</h2>
+          <div class="pricing-links">
+            <a href="https://www.ebay.com/sch/i.html?_nkw=intel+arc+b580" target="_blank" rel="noopener" class="pricing-link">B580 on eBay</a>
+            <a href="https://www.amazon.com/s?k=intel+arc+b580" target="_blank" rel="noopener" class="pricing-link">B580 on Amazon</a>
+            <a href="https://www.newegg.com/p/pl?d=intel+arc+b580" target="_blank" rel="noopener" class="pricing-link">B580 on Newegg</a>
+            <a href="https://www.bhphotovideo.com/c/search?q=intel+arc+b580" target="_blank" rel="noopener" class="pricing-link">B&H Photo</a>
+          </div>
+        </section>
+      </>
+    ) : (
+      <div class="loading-state">Loading...</div>
+    )}
+  </div>
+</Layout>
+
+<style>
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem;
+  }
+
+  .page-header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .page-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .subtitle {
+    color: var(--color-text-muted);
+    margin-top: 0.5rem;
+  }
+
+  section {
+    margin-bottom: 1.5rem;
+  }
+
+  section h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .model-count {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--color-text-muted);
+  }
+
+  .tldr p {
+    line-height: 1.7;
+  }
+
+  /* Info Grid */
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+
+  @media (max-width: 768px) {
+    .info-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* Navigation */
+  .arch-nav {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .arch-tab {
+    padding: 0.5rem 1rem;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+  }
+
+  .arch-tab:hover {
+    border-color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  .arch-tab.active {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: white;
+  }
+
+  /* Models Grid */
+  .models-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+
+  .model-card {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+  }
+
+  .model-name {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0 0 0.75rem;
+  }
+
+  .model-stats {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .stat-label {
+    font-size: 0.625rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+  }
+
+  .stat-value {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .model-results {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+
+  .model-results th,
+  .model-results td {
+    padding: 0.5rem;
+    text-align: left;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .model-results th.numeric,
+  .model-results td.numeric {
+    text-align: right;
+  }
+
+  .model-results th {
+    font-weight: 500;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .test-badge {
+    display: inline-block;
+    padding: 0.0625rem 0.375rem;
+    border-radius: 0.125rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    background-color: var(--color-bg-secondary);
+  }
+
+  .test-badge.h264 { color: #22c55e; }
+  .test-badge.hevc { color: #3b82f6; }
+  .test-badge.av1 { color: #a855f7; }
+
+  /* Specs Table */
+  .specs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  .specs-table th,
+  .specs-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .specs-table th {
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+  }
+
+  .specs-table tr.upcoming {
+    opacity: 0.7;
+  }
+
+  .specs-note {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin-top: 0.75rem;
+    font-style: italic;
+  }
+
+  /* Feature List */
+  .feature-list {
+    list-style: none;
+    padding: 0;
+  }
+
+  .feature-list li {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.875rem;
+  }
+
+  .feature-list li:last-child {
+    border-bottom: none;
+  }
+
+  /* Pricing */
+  .pricing-links {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .pricing-link {
+    padding: 0.5rem 1rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+  }
+
+  .pricing-link:hover {
+    border-color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  .no-data {
+    color: var(--color-text-muted);
+    text-align: center;
+    padding: 2rem;
+    line-height: 1.8;
+  }
+
+  .error-state, .loading-state {
+    text-align: center;
+    padding: 2rem;
+  }
+</style>

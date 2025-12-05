@@ -7,6 +7,30 @@ import { createHash } from 'crypto';
 import { parseCPU, CPUInfo } from './cpu-parser';
 
 /**
+ * Strip frequency suffix (e.g., "@ 3.90GHz") from CPU string.
+ */
+function stripFrequencySuffix(cpuStr: string): string {
+  return cpuStr.replace(/\s*@\s*\d+(\.\d+)?\s*GHz/i, '').trim();
+}
+
+/**
+ * Normalize CPU string by removing common markers for consistency.
+ * Removes: Intel(R), Core(TM), "CPU", generation prefixes, and extra whitespace.
+ * Result: "i5-13500" instead of "13th Gen Intel Core i5-13500"
+ */
+function normalizeCPUString(cpuStr: string): string {
+  return cpuStr
+    .replace(/\(R\)/gi, '')
+    .replace(/\(TM\)/gi, '')
+    .replace(/\bCPU\b/gi, '')
+    .replace(/^\d{1,2}th Gen Intel Core\s+/i, '')  // "13th Gen Intel Core i5-13500" -> "i5-13500"
+    .replace(/^Intel Core\s+(?=i[3579]-)/i, '')    // "Intel Core i5-13500" -> "i5-13500"
+    .replace(/^Intel Core\s+(?=Ultra)/i, '')       // "Intel Core Ultra 5 225" -> "Ultra 5 225"
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Detect vendor from hardware string.
  * Returns 'nvidia' for NVIDIA GPUs, 'intel' for Intel CPUs/Arc GPUs, 'amd' for AMD.
  */
@@ -158,7 +182,10 @@ export function parseResults(body: string): ParsedResult[] {
       continue; // Invalid line
     }
 
-    const [cpuRaw, testName, testFile, bitrateStr, timeStr, fpsStr, speedStr, wattsStr] = parts.map(p => p.trim());
+    const [cpuRawInput, testName, testFile, bitrateStr, timeStr, fpsStr, speedStr, wattsStr] = parts.map(p => p.trim());
+
+    // Clean CPU string: strip frequency suffix and normalize markers
+    const cpuRaw = normalizeCPUString(stripFrequencySuffix(cpuRawInput));
 
     // Detect vendor and parse hardware info appropriately
     const vendor = detectVendor(cpuRaw);
@@ -206,12 +233,12 @@ export function parseResults(body: string): ParsedResult[] {
     // Compute fps_per_watt
     const fpsPerWatt = watts && watts > 0 ? fps / watts : null;
 
-    // Generate hash for deduplication
-    const hashInput = `${cpuRaw.trim()}|${testName}|${testFile}|${bitrate}|${fps}|${watts}`;
+    // Generate hash for deduplication (use cleaned CPU string)
+    const hashInput = `${cpuRaw}|${testName}|${testFile}|${bitrate}|${fps}|${watts}`;
     const resultHash = createHash('sha256').update(hashInput).digest('hex');
 
     results.push({
-      cpu_raw: cpuRaw.trim(),
+      cpu_raw: cpuRaw,
       cpu_brand: hwInfo.brand,
       cpu_model: hwInfo.model,
       cpu_generation: hwInfo.generation,
@@ -268,7 +295,10 @@ export function parseConcurrencyResults(body: string): ParsedConcurrencyResult[]
       continue;
     }
 
-    const [cpuRaw, testName, testFile, ...speedParts] = parts;
+    const [cpuRawInput, testName, testFile, ...speedParts] = parts;
+
+    // Clean CPU string: strip frequency suffix and normalize markers
+    const cpuRaw = normalizeCPUString(stripFrequencySuffix(cpuRawInput.trim()));
 
     // Detect vendor and parse hardware info appropriately
     const vendor = detectVendor(cpuRaw);
@@ -305,12 +335,12 @@ export function parseConcurrencyResults(body: string): ParsedConcurrencyResult[]
       }
     }
 
-    // Generate hash
-    const hashInput = `${cpuRaw.trim()}|${testName}|${testFile}|${speeds.join(',')}`;
+    // Generate hash (use cleaned CPU string)
+    const hashInput = `${cpuRaw}|${testName}|${testFile}|${speeds.join(',')}`;
     const resultHash = createHash('sha256').update(hashInput).digest('hex');
 
     results.push({
-      cpu_raw: cpuRaw.trim(),
+      cpu_raw: cpuRaw,
       cpu_brand: hwInfo.brand,
       cpu_model: hwInfo.model,
       cpu_generation: hwInfo.generation,

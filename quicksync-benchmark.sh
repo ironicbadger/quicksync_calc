@@ -370,6 +370,16 @@ main(){
   cpuinfo_model="$(grep -m1 'model name' /proc/cpuinfo | cut -d':' -f2)"
   cpu_model="${cpuinfo_model:-1}"
 
+  # Check for virtual/emulated CPUs (not supported for benchmarking)
+  if echo "$cpu_model" | grep -qiE 'QEMU|Virtual|VMware|VirtualBox|Hyper-V|KVM'; then
+    echo ""
+    echo "ERROR: Virtual/emulated CPUs are not supported for benchmarking."
+    echo "Detected CPU: $cpu_model"
+    echo ""
+    echo "This benchmark requires real hardware with Intel Quick Sync Video support."
+    exit 1
+  fi
+
   echo ""
   echo "Running benchmarks (estimated total time: 5-7 minutes)"
   echo "======================================================="

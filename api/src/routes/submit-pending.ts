@@ -9,6 +9,7 @@
 import { Hono } from 'hono';
 import { getDb, Env } from '../lib/db';
 import { parseResults, ParsedResult } from '../lib/parser';
+import { isBlockedCPU } from '../lib/cpu-parser';
 
 const submitPending = new Hono<{ Bindings: Env }>();
 
@@ -42,6 +43,26 @@ submitPending.post('/', async (c) => {
 
   if (results.length === 0) {
     return c.json({ success: false, error: 'No valid results found' }, 400);
+  }
+
+  // Validate CPU - check for blocked CPUs (virtual machines, etc.)
+  const blockedCPUs = results.filter(r => isBlockedCPU(r.cpu_raw));
+  if (blockedCPUs.length > 0) {
+    return c.json({
+      success: false,
+      error: 'Virtual/emulated CPUs are not supported for benchmarking',
+      blocked_cpu: blockedCPUs[0].cpu_raw,
+    }, 400);
+  }
+
+  // Validate CPU - require architecture to be detected
+  const unknownCPUs = results.filter(r => r.architecture === null);
+  if (unknownCPUs.length > 0) {
+    return c.json({
+      success: false,
+      error: 'Unrecognized CPU architecture. Please report this CPU model.',
+      unknown_cpu: unknownCPUs[0].cpu_raw,
+    }, 400);
   }
 
   // Generate unique token

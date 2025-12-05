@@ -83,6 +83,16 @@ CREATE TABLE IF NOT EXISTS cpu_architectures (
     vp9_encode BOOLEAN DEFAULT 0,
     av1_encode BOOLEAN DEFAULT 0,
 
+    -- Integrated GPU info (for generation detail pages)
+    igpu_name TEXT,                  -- "Intel UHD 630", "Intel Xe Graphics", "Arc Graphics"
+    igpu_codename TEXT,              -- "Gen9.5", "Xe-LP", "Xe-LPG"
+    process_nm TEXT,                 -- "14nm", "Intel 7", "Intel 4" (TEXT for marketing names)
+    max_p_cores INTEGER,             -- Max performance cores for this architecture
+    max_e_cores INTEGER,             -- Max efficiency cores (NULL for pre-Alder Lake)
+    tdp_range TEXT,                  -- "35-125W", "15-45W"
+    die_layout TEXT,                 -- "Monolithic", "Hybrid (P+E cores)", "Chiplet (4 tiles)"
+    gpu_eu_count TEXT,               -- "24 EU", "32 EU", "128 EU"
+
     -- Vendor support
     vendor TEXT DEFAULT 'intel',
 

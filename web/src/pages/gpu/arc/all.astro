@@ -1,0 +1,442 @@
+---
+/**
+ * All Arc GPUs Page
+ * Shows all Arc GPU models with individual stats (not merged)
+ */
+import Layout from '../../../layouts/Layout.astro';
+import CodecMatrix from '../../../components/generation/CodecMatrix.astro';
+
+const API_BASE = import.meta.env.PUBLIC_API_URL || 'https://quicksync-api.ktz.me';
+
+let arcData: any = null;
+let error: string | null = null;
+
+try {
+  const response = await fetch(`${API_BASE}/api/results/arc-models`);
+  if (response.ok) {
+    arcData = await response.json();
+    if (!arcData.success) {
+      error = arcData.error || 'Failed to load Arc GPU data';
+    }
+  } else {
+    error = `API error: ${response.status}`;
+  }
+} catch (e) {
+  error = 'Failed to connect to API';
+}
+
+// Group models by architecture
+const modelsByArch: Record<string, any[]> = {};
+if (arcData?.models) {
+  for (const model of arcData.models) {
+    if (!modelsByArch[model.architecture]) {
+      modelsByArch[model.architecture] = [];
+    }
+    modelsByArch[model.architecture].push(model);
+  }
+}
+
+// Get codec support from first architecture
+const codecSupport = arcData?.architectures?.[0]?.codec_support || {
+  h264_encode: true,
+  hevc_8bit_encode: true,
+  hevc_10bit_encode: true,
+  vp9_encode: true,
+  av1_encode: true,
+};
+
+// Strip "Arc" prefix from model name for display
+function cleanModelName(name: string): string {
+  return name.replace(/^Intel\s*/i, '').replace(/^Arc\s*/i, '').trim();
+}
+---
+
+<Layout title="Intel Arc GPUs - QuickSync Benchmarks">
+  <div class="container">
+    <div class="page-header">
+      <h1>Intel Arc GPUs</h1>
+      <p class="subtitle">Discrete GPU hardware encoding benchmark comparison</p>
+    </div>
+
+    {error ? (
+      <div class="error-state card">
+        <p>{error}</p>
+        <a href="/" class="back-link">&larr; Back to Dashboard</a>
+      </div>
+    ) : arcData ? (
+      <>
+        {/* TL;DR */}
+        <section class="tldr card">
+          <h2>TL;DR</h2>
+          <p>
+            Intel Arc GPUs feature <strong>full hardware encoding support</strong> including AV1, making them
+            excellent choices for video transcoding. They support H.264, HEVC (8-bit and 10-bit), VP9, and AV1
+            encoding - the most complete codec support in Intel's lineup.
+          </p>
+        </section>
+
+        {/* Navigation tabs */}
+        <nav class="arch-nav">
+          <a href="/gpu/arc/all" class="arch-tab active">All Models</a>
+          <a href="/gpu/arc/alchemist" class="arch-tab">Alchemist (A-Series)</a>
+          <a href="/gpu/arc/battlemage" class="arch-tab">Battlemage (B-Series)</a>
+        </nav>
+
+        {/* Codec Support */}
+        <section class="card">
+          <h2>Codec Support</h2>
+          <CodecMatrix codecSupport={codecSupport} />
+        </section>
+
+        {/* Models by Architecture */}
+        {Object.entries(modelsByArch).map(([arch, models]) => (
+          <section class="models-section card">
+            <h2>
+              {arch}
+              <span class="model-count">{models.length} {models.length === 1 ? 'model' : 'models'}</span>
+            </h2>
+
+            <div class="models-grid">
+              {models.map((model: any) => (
+                <div class="model-card">
+                  <h3 class="model-name">{cleanModelName(model.model_name)}</h3>
+                  <div class="model-stats">
+                    <span class="stat-item">
+                      <span class="stat-label">Results</span>
+                      <span class="stat-value">{model.total_results}</span>
+                    </span>
+                  </div>
+
+                  {model.by_test.length > 0 && (
+                    <table class="model-results">
+                      <thead>
+                        <tr>
+                          <th>Test</th>
+                          <th class="numeric">FPS</th>
+                          <th class="numeric">FPS/W</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {model.by_test.map((test: any) => (
+                          <tr>
+                            <td>
+                              <span class:list={['test-badge', test.test_name.includes('hevc') ? 'hevc' : test.test_name.includes('av1') ? 'av1' : 'h264']}>
+                                {test.test_name}
+                              </span>
+                            </td>
+                            <td class="numeric">{test.avg_fps?.toFixed(1) || '—'}</td>
+                            <td class="numeric">{test.fps_per_watt?.toFixed(2) || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+
+        {/* Comparison Table */}
+        {arcData.models.length > 0 && arcData.all_tests.length > 0 && (
+          <section class="comparison-section card">
+            <h2>Performance Comparison</h2>
+            <div class="comparison-table-wrapper">
+              <table class="comparison-table">
+                <thead>
+                  <tr>
+                    <th>GPU</th>
+                    <th>Architecture</th>
+                    {arcData.all_tests.map((test: string) => (
+                      <th class="numeric">{test}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {arcData.models.map((model: any) => (
+                    <tr>
+                      <td class="model-name-cell">{cleanModelName(model.model_name)}</td>
+                      <td>{model.architecture.replace('Arc ', '')}</td>
+                      {arcData.all_tests.map((testName: string) => {
+                        const test = model.by_test.find((t: any) => t.test_name === testName);
+                        return (
+                          <td class="numeric">{test?.avg_fps?.toFixed(1) || '—'}</td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* Pricing Links */}
+        <section class="pricing-section card">
+          <h2>Find Arc GPUs</h2>
+          <p class="pricing-note">Search for Intel Arc GPUs on popular marketplaces:</p>
+          <div class="pricing-links">
+            <a href="https://www.ebay.com/sch/i.html?_nkw=intel+arc+gpu" target="_blank" rel="noopener" class="pricing-link">
+              eBay
+            </a>
+            <a href="https://www.amazon.com/s?k=intel+arc+gpu" target="_blank" rel="noopener" class="pricing-link">
+              Amazon
+            </a>
+            <a href="https://www.newegg.com/p/pl?d=intel+arc" target="_blank" rel="noopener" class="pricing-link">
+              Newegg
+            </a>
+            <a href="https://www.bhphotovideo.com/c/search?q=intel+arc" target="_blank" rel="noopener" class="pricing-link">
+              B&H Photo
+            </a>
+          </div>
+        </section>
+      </>
+    ) : (
+      <div class="loading-state">
+        <p>Loading...</p>
+      </div>
+    )}
+  </div>
+</Layout>
+
+<style>
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem;
+  }
+
+  .page-header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .page-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .subtitle {
+    color: var(--color-text-muted);
+    margin-top: 0.5rem;
+  }
+
+  section {
+    margin-bottom: 1.5rem;
+  }
+
+  section h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .model-count {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--color-text-muted);
+  }
+
+  /* TL;DR */
+  .tldr p {
+    line-height: 1.7;
+  }
+
+  /* Architecture Navigation */
+  .arch-nav {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .arch-tab {
+    padding: 0.5rem 1rem;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+  }
+
+  .arch-tab:hover {
+    border-color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  .arch-tab.active {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: white;
+  }
+
+  /* Models Grid */
+  .models-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+  }
+
+  .model-card {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+  }
+
+  .model-name {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0 0 0.75rem;
+  }
+
+  .model-stats {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .stat-label {
+    font-size: 0.625rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+  }
+
+  .stat-value {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .model-results {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+
+  .model-results th {
+    text-align: left;
+    padding: 0.5rem;
+    font-weight: 500;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .model-results th.numeric {
+    text-align: right;
+  }
+
+  .model-results td {
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .model-results td.numeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .test-badge {
+    display: inline-block;
+    padding: 0.0625rem 0.375rem;
+    border-radius: 0.125rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    background-color: var(--color-bg-secondary);
+  }
+
+  .test-badge.h264 { color: #22c55e; }
+  .test-badge.hevc { color: #3b82f6; }
+  .test-badge.av1 { color: #a855f7; }
+
+  /* Comparison Table */
+  .comparison-table-wrapper {
+    overflow-x: auto;
+  }
+
+  .comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  .comparison-table th {
+    text-align: left;
+    padding: 0.75rem;
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    border-bottom: 2px solid var(--color-border);
+    white-space: nowrap;
+  }
+
+  .comparison-table th.numeric {
+    text-align: right;
+  }
+
+  .comparison-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .comparison-table td.numeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .model-name-cell {
+    font-weight: 500;
+  }
+
+  /* Pricing */
+  .pricing-note {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    margin-bottom: 1rem;
+  }
+
+  .pricing-links {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .pricing-link {
+    padding: 0.5rem 1rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+  }
+
+  .pricing-link:hover {
+    border-color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  /* States */
+  .error-state, .loading-state {
+    text-align: center;
+    padding: 2rem;
+  }
+
+  .back-link {
+    display: inline-block;
+    margin-top: 1rem;
+    color: var(--color-accent);
+  }
+</style>

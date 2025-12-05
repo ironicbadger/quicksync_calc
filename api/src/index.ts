@@ -55,6 +55,9 @@ app.get('/', (c) => {
       'GET /api/stats/summary': 'Get summary statistics',
       'GET /api/scores': 'Get CPU scores with methodology',
       'GET /api/scores/for-results': 'Get score lookup map for all CPUs',
+      'GET /api/results/generation-detail': 'Get comprehensive data for a generation page',
+      'GET /api/results/architectures': 'Get all CPU architectures with metadata',
+      'GET /api/results/arc-models': 'Get Arc GPU models with individual stats',
     },
   });
 });

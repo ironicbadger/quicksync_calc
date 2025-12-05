@@ -3,6 +3,25 @@
  * Handles both legacy naming (i5-12500) and new naming (Core Ultra 7 265K).
  */
 
+/**
+ * Blocklist patterns for invalid/virtual CPUs that should be rejected.
+ */
+const CPU_BLOCKLIST: RegExp[] = [
+  /QEMU/i,
+  /Virtual/i,
+  /VMware/i,
+  /VirtualBox/i,
+  /Hyper-V/i,
+  /\bKVM\b/i,
+];
+
+/**
+ * Check if a CPU string matches the blocklist (virtual/invalid CPUs).
+ */
+export function isBlockedCPU(cpuRaw: string): boolean {
+  return CPU_BLOCKLIST.some(pattern => pattern.test(cpuRaw));
+}
+
 export interface CPUInfo {
   brand: string | null;      // i3, i5, i7, i9, Ultra 5, Ultra 7, etc.
   model: string | null;      // 12500, 265K, etc.
