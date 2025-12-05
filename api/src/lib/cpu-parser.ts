@@ -120,10 +120,23 @@ export function parseCPU(cpuRaw: string): CPUInfo {
   if (model) {
     const genMatch = model.match(/^(\d{4,5})/);
     if (genMatch) {
-      const genStr = genMatch[1];
-      // 4-digit mobile (1165G7) -> first 2 digits = "11"
-      // 5-digit desktop (12600K) -> first 2 digits = "12"
-      generation = parseInt(genStr.slice(0, 2), 10);
+      const numericPart = genMatch[1];
+      if (numericPart.length === 4) {
+        // 4-digit model numbers:
+        // - 2nd-9th gen: first digit is generation (e.g., 4700 -> gen 4, 8500 -> gen 8)
+        // - 10th gen mobile (Ice Lake): 4 digits starting with "10" (e.g., 1065G7 -> gen 10)
+        const firstTwoDigits = parseInt(numericPart.slice(0, 2), 10);
+        if (firstTwoDigits >= 10 && firstTwoDigits <= 14) {
+          // 10th-14th gen mobile (1065G7, 1165G7, 1240P, 1340P, 1440P)
+          generation = firstTwoDigits;
+        } else {
+          // 2nd-9th gen: first digit is generation (2700K, 4700EQ, 8500, etc.)
+          generation = parseInt(numericPart[0], 10);
+        }
+      } else if (numericPart.length === 5) {
+        // 5-digit model numbers: first 2 digits are generation (12600K -> gen 12)
+        generation = parseInt(numericPart.slice(0, 2), 10);
+      }
     }
   }
 
