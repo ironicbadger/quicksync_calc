@@ -25,6 +25,7 @@ interface CpuModel {
   avg_fps: number;
   fps_per_watt: number | null;
   score: number | null;
+  ecc_support?: boolean;
 }
 
 interface Props {
@@ -113,7 +114,10 @@ function stripCpuBranding(cpu: string): string {
                   <span class="variant-cpus-label">Tested CPUs using this die:</span>
                   <div class="variant-cpus-list">
                     {variantCpus.map(cpu => (
-                      <span class="variant-cpu-chip">{stripCpuBranding(cpu.cpu_raw)}</span>
+                      <span class="variant-cpu-chip">
+                        {stripCpuBranding(cpu.cpu_raw)}
+                        {cpu.ecc_support && <span class="ecc-badge">ECC</span>}
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -253,13 +257,26 @@ function stripCpuBranding(cpu: string): string {
   }
 
   .variant-cpu-chip {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
     font-size: 0.75rem;
     padding: 0.1875rem 0.5rem;
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border);
     border-radius: 0.25rem;
     color: var(--color-text);
+  }
+
+  .ecc-badge {
+    font-size: 0.625rem;
+    font-weight: 600;
+    padding: 0.0625rem 0.3125rem;
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    border-radius: 0.1875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
   }
 
   .arch-name {

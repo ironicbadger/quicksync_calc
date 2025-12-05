@@ -868,7 +868,7 @@ results.get('/generation-detail', async (c) => {
     archMetadataArgs = [vendor, ...generationFilter.values];
   }
 
-  const [archMetadata, statsResult, overallResult, cpuModelsResult, baselineResult, baselineByTestResult, timelineResult] = await Promise.all([
+  const [archMetadata, statsResult, overallResult, cpuModelsResult, cpuFeaturesResult, baselineResult, baselineByTestResult, timelineResult] = await Promise.all([
     // Architecture metadata
     db.execute({
       sql: archMetadataQuery,
@@ -919,6 +919,18 @@ results.get('/generation-detail', async (c) => {
         WHERE vendor = ? AND ${filterClause}
         GROUP BY cpu_raw
         ORDER BY avg_fps DESC
+      `,
+      args: [vendor, ...generationFilter.values],
+    }),
+    // CPU features (ECC support, etc.) for CPUs in this generation
+    db.execute({
+      sql: `
+        SELECT cpu_raw, ecc_support
+        FROM cpu_features
+        WHERE cpu_raw IN (
+          SELECT DISTINCT cpu_raw FROM benchmark_results
+          WHERE vendor = ? AND ${filterClause}
+        )
       `,
       args: [vendor, ...generationFilter.values],
     }),
@@ -1146,12 +1158,17 @@ results.get('/generation-detail', async (c) => {
         };
       }),
     },
-    cpu_models: cpuModelsResult.rows.map((row: Record<string, unknown>) => ({
-      cpu_raw: row.cpu_raw as string,
-      result_count: row.result_count as number,
-      avg_fps: row.avg_fps as number,
-      fps_per_watt: row.fps_per_watt as number | null,
-    })),
+    cpu_models: cpuModelsResult.rows.map((row: Record<string, unknown>) => {
+      const cpuRaw = row.cpu_raw as string;
+      const features = cpuFeaturesResult.rows.find((f: Record<string, unknown>) => f.cpu_raw === cpuRaw);
+      return {
+        cpu_raw: cpuRaw,
+        result_count: row.result_count as number,
+        avg_fps: row.avg_fps as number,
+        fps_per_watt: row.fps_per_watt as number | null,
+        ecc_support: features ? !!features.ecc_support : false,
+      };
+    }),
     timeline: {
       all_generations: uniqueTimeline,
       current_position: currentPosition,
