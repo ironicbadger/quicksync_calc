@@ -121,7 +121,9 @@ export function parseCPU(cpuRaw: string): CPUInfo {
     const genMatch = model.match(/^(\d{4,5})/);
     if (genMatch) {
       const genStr = genMatch[1];
-      generation = parseInt(genStr.slice(0, -3), 10);
+      // 4-digit mobile (1165G7) -> first 2 digits = "11"
+      // 5-digit desktop (12600K) -> first 2 digits = "12"
+      generation = parseInt(genStr.slice(0, 2), 10);
     }
   }
 
