@@ -74,6 +74,11 @@ dep_check(){
     exit 127
   fi
 
+  if ! which bc >/dev/null; then
+    echo "bc missing. Please install bc"
+    exit 127
+  fi
+
 }
 
 # Test video files with their sizes in bytes
