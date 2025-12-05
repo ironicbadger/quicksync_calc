@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Intel Quick Sync Video Benchmark
 # https://github.com/ironicbadger/quicksync_calc
