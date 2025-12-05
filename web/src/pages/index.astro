@@ -752,6 +752,13 @@ cd quicksync_calc
 </style>
 
 <script define:vars={{ API_URL }}>
+  // Helper function to format ordinal numbers (1st, 2nd, 3rd, 4th, etc.)
+  function ordinal(n) {
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  }
+
   // Dashboard state
   const state = {
     filters: {
@@ -857,7 +864,7 @@ cd quicksync_calc
     genList.innerHTML = state.filterOptions.generations.map(g => `
       <label class="checkbox-item" data-value="${g}">
         <input type="checkbox" value="${g}" data-filter="generation" />
-        <span>${g}th Gen</span>
+        <span>${ordinal(g)} Gen</span>
         <span class="count"></span>
       </label>
     `).join('');
@@ -1251,14 +1258,14 @@ cd quicksync_calc
 
       let titleText = '';
       if (hasGenerations && !hasArchitectures) {
-        const genList = data.generations.map(g => `${g}th`).join(', ');
+        const genList = data.generations.map(g => ordinal(g)).join(', ');
         titleText = data.generations.length === 1
           ? `${genList} Gen vs 8th Gen Baseline`
           : `${genList} Gen Comparison`;
       } else if (!hasGenerations && hasArchitectures) {
         titleText = 'Intel Arc vs 8th Gen Baseline';
       } else {
-        const genList = data.generations.map(g => `${g}th`).join(', ');
+        const genList = data.generations.map(g => ordinal(g)).join(', ');
         titleText = `${genList} Gen + Arc Comparison`;
       }
       statsTitle.textContent = titleText;
@@ -1299,7 +1306,7 @@ cd quicksync_calc
       for (const genData of data.data) {
         const isArc = genData.isArc;
         const color = isArc ? '#10b981' : (genColors[genData.generation]?.border || '#3b82f6'); // Green for Arc
-        const displayName = isArc ? genData.architecture : `${genData.generation}th Gen`;
+        const displayName = isArc ? genData.architecture : `${ordinal(genData.generation)} Gen`;
         const archLabel = isArc ? '' : (genData.architecture ? `<span class="gen-arch">${genData.architecture}</span>` : '');
 
         summaryHtml += `
@@ -1368,7 +1375,7 @@ cd quicksync_calc
           const colors = isArc
             ? { bg: 'rgba(16, 185, 129, 0.7)', border: 'rgb(16, 185, 129)' } // Green for Arc
             : (genColors[genData.generation] || { bg: 'rgba(59, 130, 246, 0.7)', border: 'rgb(59, 130, 246)' });
-          const label = isArc ? genData.architecture : `${genData.generation}th Gen`;
+          const label = isArc ? genData.architecture : `${ordinal(genData.generation)} Gen`;
 
           return {
             label,
@@ -1572,7 +1579,7 @@ cd quicksync_calc
             </td>
             <td>
               ${cpuData.architecture ? `<span class="gen-arch">${cpuData.architecture}</span>` : '-'}
-              ${cpuData.cpu_generation ? `<span class="gen-arch">${cpuData.cpu_generation}th Gen</span>` : ''}
+              ${cpuData.cpu_generation ? `<span class="gen-arch">${ordinal(cpuData.cpu_generation)} Gen</span>` : ''}
             </td>
             <td class="gen-metric">
               <span class="gen-value">${cpuData.overall.avg_fps?.toFixed(1) || '-'}</span>

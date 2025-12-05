@@ -51,9 +51,12 @@ const CPU_PATTERNS: ArchitecturePattern[] = [
   { pattern: /i[3579]-10\d{2}G/, architecture: 'Ice Lake', codename: 'ICL', releaseYear: 2019, sortOrder: 95 },
   { pattern: /i[3579]-11\d{2}G/, architecture: 'Tiger Lake', codename: 'TGL', releaseYear: 2020, sortOrder: 105 },
   { pattern: /i[3579]-11\d{3}/, architecture: 'Rocket Lake', codename: 'RKL', releaseYear: 2021, sortOrder: 110 },
-  { pattern: /i[3579]-12\d{3}/, architecture: 'Alder Lake', codename: 'ADL', releaseYear: 2021, sortOrder: 120 },
-  { pattern: /i[3579]-13\d{3}/, architecture: 'Raptor Lake', codename: 'RPL', releaseYear: 2022, sortOrder: 130 },
-  { pattern: /i[3579]-14\d{3}/, architecture: 'Raptor Lake Refresh', codename: 'RPL-R', releaseYear: 2023, sortOrder: 140 },
+  { pattern: /i[3579]-12\d{2}[A-Z]+/, architecture: 'Alder Lake', codename: 'ADL', releaseYear: 2021, sortOrder: 118 }, // Mobile: i5-1240P
+  { pattern: /i[3579]-12\d{3}[A-Z]*/, architecture: 'Alder Lake', codename: 'ADL', releaseYear: 2021, sortOrder: 120 }, // Desktop: i5-12600K
+  { pattern: /i[3579]-13\d{2}[A-Z]+/, architecture: 'Raptor Lake', codename: 'RPL', releaseYear: 2022, sortOrder: 128 }, // Mobile: i5-1340P
+  { pattern: /i[3579]-13\d{3}[A-Z]*/, architecture: 'Raptor Lake', codename: 'RPL', releaseYear: 2022, sortOrder: 130 }, // Desktop: i5-13600K
+  { pattern: /i[3579]-14\d{2}[A-Z]+/, architecture: 'Raptor Lake Refresh', codename: 'RPL-R', releaseYear: 2023, sortOrder: 138 }, // Mobile: i5-1440P
+  { pattern: /i[3579]-14\d{3}[A-Z]*/, architecture: 'Raptor Lake Refresh', codename: 'RPL-R', releaseYear: 2023, sortOrder: 140 }, // Desktop: i5-14600K
   { pattern: /Ultra [3579] 1\d{2}[HUP]?/, architecture: 'Meteor Lake', codename: 'MTL', releaseYear: 2023, sortOrder: 150 },
   { pattern: /Ultra [3579] 2\d{2}[KFS]/, architecture: 'Arrow Lake', codename: 'ARL', releaseYear: 2024, sortOrder: 200 },
   { pattern: /Ultra [3579] 2\d{2}[VU]/, architecture: 'Lunar Lake', codename: 'LNL', releaseYear: 2024, sortOrder: 210 },
