@@ -88,9 +88,9 @@ CPU_PATTERNS = [
     (r'Silver.*\d{4}', 'Gemini Lake', None),
     (r'^Silver$', 'Gemini Lake', None),  # Bare "Silver" (likely truncated Pentium Silver)
 
-    # Intel Arc GPUs
-    (r'Arc\s*A\d{2,3}', 'Alchemist', 1),   # Arc A-series (A770, A750, A380, A40 Pro, etc.)
-    (r'Arc\s*B\d{3}', 'Battlemage', 2),    # Arc B-series (B580, B570)
+    # Intel Arc GPUs (discrete - no cpu_generation, identified by architecture name)
+    (r'Arc\s*A\d{2,3}', 'Arc Alchemist', None),   # Arc A-series (A770, A750, A380, A40 Pro, etc.)
+    (r'Arc\s*B\d{3}', 'Arc Battlemage', None),    # Arc B-series (B580, B570)
 
     # Intel Processor N-series
     (r'Processor N\d{3}', 'Alder Lake-N', 12),
