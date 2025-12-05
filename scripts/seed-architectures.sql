@@ -135,3 +135,68 @@ INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, re
 INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
     h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
 ('Processor N\d{3}', 'Alder Lake-N', 'ADL-N', 2023, 1, 126, 1, 1, 1, 1, 0, 'intel');
+
+-- Intel Core i3-N series (Alder Lake-N)
+INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
+    h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
+('i3-N\d{3}', 'Alder Lake-N', 'ADL-N', 2023, 1, 125, 1, 1, 1, 1, 0, 'intel');
+
+-- Intel N95/N97/N100 (Alder Lake-N, 2-digit model numbers)
+INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
+    h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
+('N\d{2}$', 'Alder Lake-N', 'ADL-N', 2023, 1, 125, 1, 1, 1, 1, 0, 'intel');
+
+-- Gemini Lake (J4xxx, J5xxx - 2017-2019)
+INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
+    h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
+('J[456]\d{3}', 'Gemini Lake', 'GLK', 2017, 4, 72, 1, 1, 0, 0, 0, 'intel');
+
+-- Xeon E3 v6 (Kaby Lake)
+INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
+    h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
+('Xeon.*E3-\d{4}\s*v6', 'Kaby Lake', 'KBL', 2017, 1, 70, 1, 1, 0, 0, 0, 'intel');
+
+-- Xeon E3 v5 (Skylake)
+INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
+    h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
+('Xeon.*E3-\d{4}\s*v5', 'Skylake', 'SKL', 2015, 3, 60, 1, 0, 0, 0, 0, 'intel');
+
+-- Xeon E3 v4 (Broadwell)
+INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
+    h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
+('Xeon.*E3-\d{4}\s*v4', 'Broadwell', 'BDW', 2015, 2, 50, 1, 0, 0, 0, 0, 'intel');
+
+-- Xeon E3 v3 (Haswell)
+INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
+    h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
+('Xeon.*E3-\d{4}\s*v3', 'Haswell', 'HSW', 2013, 2, 40, 1, 0, 0, 0, 0, 'intel');
+
+-- Xeon E-21xx/22xx/23xx standalone (matches E-2144G, E-2288G without "Xeon" prefix)
+INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
+    h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
+('E-2[123]\d{2}G?', 'Xeon E', 'CFL', 2018, 4, 85, 1, 1, 0, 0, 0, 'intel');
+
+-- Pentium G4xxx (Coffee Lake era)
+INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
+    h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
+('G4\d{3}[T]?', 'Coffee Lake', 'CFL', 2018, 4, 80, 1, 1, 0, 0, 0, 'intel');
+
+-- Core m3-8100Y (Amber Lake)
+INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
+    h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
+('m3-\d{4}Y', 'Amber Lake', 'AML-Y', 2018, 3, 83, 1, 1, 0, 0, 0, 'intel');
+
+-- Core M-5Yxx (Broadwell-Y)
+INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
+    h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
+('M-5Y\d{2}', 'Broadwell', 'BDW-Y', 2014, 4, 50, 1, 0, 0, 0, 0, 'intel');
+
+-- Pentium Silver (Gemini Lake)
+INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
+    h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
+('Pentium.*Silver', 'Gemini Lake', 'GLK', 2017, 4, 72, 1, 1, 0, 0, 0, 'intel');
+
+-- Silver Jxxxx/Nxxxx (Gemini Lake, standalone)
+INSERT INTO cpu_architectures (pattern, architecture, codename, release_year, release_quarter, sort_order,
+    h264_encode, hevc_8bit_encode, hevc_10bit_encode, vp9_encode, av1_encode, vendor) VALUES
+('Silver.*\d{4}', 'Gemini Lake', 'GLK', 2017, 4, 72, 1, 1, 0, 0, 0, 'intel');
