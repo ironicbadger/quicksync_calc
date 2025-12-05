@@ -1,5 +1,28 @@
 # QuickSync Benchmark - Interactive Website & Database Plan
 
+## Secrets
+
+Turso database credentials are stored in sops. Use `sops` to decrypt and access them.
+
+## Python
+
+Use `uv` for Python dependency management. Use `uv run --with <package>` to run Python scripts with dependencies without installing them globally.
+
+### Turso Database Access
+
+To query Turso database:
+```bash
+eval $(sops -d secrets.enc.yaml | sed 's/: /=/g' | sed 's/^/export /g')
+TURSO_URL="$turso_url" TURSO_AUTH_TOKEN="$turso_auth_token" \
+uv run --with libsql-experimental python3 -c "
+import libsql_experimental as libsql
+import os
+conn = libsql.connect(os.environ['TURSO_URL'], auth_token=os.environ['TURSO_AUTH_TOKEN'])
+result = conn.execute('SELECT * FROM benchmark_results LIMIT 5')
+print(result.fetchall())
+"
+```
+
 ## Project Overview
 
 Transform the QuickSync Video benchmarking tool from GitHub Gist-based data collection into a modern interactive web application with proper database storage, API submission, and rich visualization.
