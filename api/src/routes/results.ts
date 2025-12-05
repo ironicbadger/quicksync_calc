@@ -257,7 +257,9 @@ results.get('/filter-counts', async (c) => {
       args: cpuArgs,
     }),
     db.execute({
-      sql: `SELECT submitter_id as value, COUNT(*) as count FROM benchmark_results WHERE ${baseConditions.join(' AND ')} AND submitter_id IS NOT NULL AND submitter_id != '' GROUP BY submitter_id ORDER BY count DESC LIMIT 50`,
+      // Count distinct submissions (by timestamp minute), not individual test rows
+      // Each benchmark run submits ~5 tests, so we group by submitter + timestamp
+      sql: `SELECT submitter_id as value, COUNT(DISTINCT substr(submitted_at, 1, 16)) as count FROM benchmark_results WHERE ${baseConditions.join(' AND ')} AND submitter_id IS NOT NULL AND submitter_id != '' GROUP BY submitter_id ORDER BY count DESC LIMIT 50`,
       args: baseArgs,
     }),
   ]);
