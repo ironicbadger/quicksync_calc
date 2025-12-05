@@ -1087,15 +1087,85 @@ cd quicksync_calc
     try {
       let data;
 
+      // Helper to combine Arc architectures into single "Arc" entry
+      const combineArcData = (arcData) => {
+        if (!arcData.success || !arcData.data || arcData.data.length === 0) return null;
+
+        // Combine all Arc architectures into one entry
+        const combined = {
+          architecture: 'Arc',
+          generation: 'Arc',
+          isArc: true,
+          overall: {
+            total_results: 0,
+            unique_cpus: 0,
+            avg_fps: 0,
+            avg_watts: null,
+            fps_per_watt: null
+          },
+          by_test: []
+        };
+
+        // Sum up overall stats
+        let fpsSum = 0, fpsCount = 0;
+        let wattsSum = 0, wattsCount = 0;
+        let effSum = 0, effCount = 0;
+
+        for (const archData of arcData.data) {
+          combined.overall.total_results += archData.overall.total_results || 0;
+          combined.overall.unique_cpus += archData.overall.unique_cpus || 0;
+          if (archData.overall.avg_fps) { fpsSum += archData.overall.avg_fps * archData.overall.total_results; fpsCount += archData.overall.total_results; }
+          if (archData.overall.avg_watts) { wattsSum += archData.overall.avg_watts * archData.overall.total_results; wattsCount += archData.overall.total_results; }
+          if (archData.overall.fps_per_watt) { effSum += archData.overall.fps_per_watt * archData.overall.total_results; effCount += archData.overall.total_results; }
+        }
+
+        combined.overall.avg_fps = fpsCount > 0 ? fpsSum / fpsCount : 0;
+        combined.overall.avg_watts = wattsCount > 0 ? wattsSum / wattsCount : null;
+        combined.overall.fps_per_watt = effCount > 0 ? effSum / effCount : null;
+
+        // Combine by_test data
+        const testMap = {};
+        for (const archData of arcData.data) {
+          for (const test of archData.by_test || []) {
+            if (!testMap[test.test_name]) {
+              testMap[test.test_name] = { ...test, _count: test.result_count || 1 };
+            } else {
+              const existing = testMap[test.test_name];
+              const newCount = test.result_count || 1;
+              const totalCount = existing._count + newCount;
+              // Weighted average
+              existing.avg_fps = (existing.avg_fps * existing._count + (test.avg_fps || 0) * newCount) / totalCount;
+              existing.avg_watts = existing.avg_watts && test.avg_watts
+                ? (existing.avg_watts * existing._count + test.avg_watts * newCount) / totalCount
+                : existing.avg_watts || test.avg_watts;
+              existing.fps_per_watt = existing.fps_per_watt && test.fps_per_watt
+                ? (existing.fps_per_watt * existing._count + test.fps_per_watt * newCount) / totalCount
+                : existing.fps_per_watt || test.fps_per_watt;
+              existing.result_count = (existing.result_count || 0) + (test.result_count || 0);
+              existing._count = totalCount;
+            }
+          }
+        }
+        combined.by_test = Object.values(testMap);
+
+        return combined;
+      };
+
       // Fetch either generation stats or architecture stats
       if (hasArcFilter && !hasGenFilter) {
-        // Only Arc selected - use architecture-stats endpoint
-        const res = await fetch(`${API_URL}/api/results/architecture-stats?architecture=${arcArchitectures.join(',')}`);
-        data = await res.json();
-        // Transform architecture data to match generation data structure
-        if (data.success && data.data) {
-          data.data = data.data.map(d => ({ ...d, generation: 'Arc', isArc: true }));
-        }
+        // Only Arc selected - use architecture-stats endpoint (always fetch both Alchemist and Battlemage)
+        const res = await fetch(`${API_URL}/api/results/architecture-stats?architecture=Alchemist,Battlemage`);
+        const arcData = await res.json();
+        const combinedArc = combineArcData(arcData);
+
+        data = {
+          success: arcData.success,
+          generations: [],
+          baseline_overall: arcData.baseline_overall,
+          baseline_by_test: [],
+          data: combinedArc ? [combinedArc] : [],
+          all_tests: arcData.all_tests || []
+        };
       } else if (hasGenFilter && !hasArcFilter) {
         // Only generations selected - use generation-stats endpoint
         const generations = state.filters.generation.join(',');
@@ -1105,21 +1175,21 @@ cd quicksync_calc
         // Both selected - fetch both and combine
         const [genRes, arcRes] = await Promise.all([
           fetch(`${API_URL}/api/results/generation-stats?generation=${state.filters.generation.join(',')}`),
-          fetch(`${API_URL}/api/results/architecture-stats?architecture=${arcArchitectures.join(',')}`)
+          fetch(`${API_URL}/api/results/architecture-stats?architecture=Alchemist,Battlemage`)
         ]);
         const genData = await genRes.json();
         const arcData = await arcRes.json();
+        const combinedArc = combineArcData(arcData);
 
-        // Combine the data - Arc uses generation=-1 as a placeholder
+        // Combine the data
         data = {
-          success: genData.success && arcData.success,
+          success: genData.success,
           generations: genData.generations || [],
-          architectures: arcData.architectures || [],
           baseline_overall: genData.baseline_overall || arcData.baseline_overall,
           baseline_by_test: genData.baseline_by_test || [],
           data: [
             ...(genData.data || []),
-            ...(arcData.data || []).map(d => ({ ...d, generation: 'Arc', isArc: true }))
+            ...(combinedArc ? [combinedArc] : [])
           ],
           all_tests: [...new Set([...(genData.all_tests || []), ...(arcData.all_tests || [])])].sort()
         };
@@ -1641,13 +1711,37 @@ cd quicksync_calc
         if (data.success) {
           let boxplotData = data.boxplot;
 
-          // Merge Arc data with "Arc" label (combining Alchemist and Battlemage)
+          // Merge Arc data with "Arc" label (combining Alchemist and Battlemage into single entries)
           if (arcData.success && arcData.boxplot.length > 0) {
-            // Rename Arc architectures to just "Arc" for display
-            const arcResults = arcData.boxplot.map(d => ({
-              ...d,
-              group: 'Arc'
-            }));
+            // Group by test and combine Alchemist/Battlemage stats
+            const arcByTest = {};
+            for (const d of arcData.boxplot) {
+              if (!arcByTest[d.test]) {
+                arcByTest[d.test] = {
+                  group: 'Arc',
+                  test: d.test,
+                  min: d.min,
+                  q1: d.q1,
+                  median: d.median,
+                  q3: d.q3,
+                  max: d.max,
+                  count: d.count,
+                  _totalCount: d.count
+                };
+              } else {
+                // Weighted average of stats
+                const existing = arcByTest[d.test];
+                const newTotal = existing._totalCount + d.count;
+                existing.median = (existing.median * existing._totalCount + d.median * d.count) / newTotal;
+                existing.q1 = Math.min(existing.q1, d.q1);
+                existing.q3 = Math.max(existing.q3, d.q3);
+                existing.min = Math.min(existing.min, d.min);
+                existing.max = Math.max(existing.max, d.max);
+                existing.count += d.count;
+                existing._totalCount = newTotal;
+              }
+            }
+            const arcResults = Object.values(arcByTest);
             boxplotData = [...boxplotData, ...arcResults];
           }
 
