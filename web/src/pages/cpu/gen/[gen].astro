@@ -276,23 +276,22 @@ function getDiffClass(diff: number | null): string {
           )}
         </section>
 
-        {/* Architecture & Codec Grid */}
-        <div class="info-grid">
-          <section class="card">
-            <h2>Architecture</h2>
-            <ArchitectureCard
-              architecture={generationData.architecture}
-              variants={generationData.architecture_variants}
-              hasMultipleVariants={generationData.has_multiple_variants}
-              cpuModels={generationData.cpu_models}
-            />
-          </section>
+        {/* Architecture */}
+        <section class="card">
+          <h2>Architecture</h2>
+          <ArchitectureCard
+            architecture={generationData.architecture}
+            variants={generationData.architecture_variants}
+            hasMultipleVariants={generationData.has_multiple_variants}
+            cpuModels={generationData.cpu_models}
+          />
+        </section>
 
-          <section class="card">
-            <h2>Codec Support</h2>
-            <CodecMatrix codecSupport={generationData.codec_support} />
-          </section>
-        </div>
+        {/* Codec Support */}
+        <section class="card">
+          <h2>Codec Support</h2>
+          <CodecMatrix codecSupport={generationData.codec_support} />
+        </section>
 
         {/* Benchmark Data */}
         <section class="benchmark-section card">
@@ -632,18 +631,7 @@ function getDiffClass(diff: number | null): string {
     border-radius: 0.25rem;
   }
 
-  /* Info Grid */
-  .info-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.5rem;
-  }
-
   @media (max-width: 768px) {
-    .info-grid {
-      grid-template-columns: 1fr;
-    }
-
     .page-header {
       grid-template-columns: 1fr;
       text-align: center;

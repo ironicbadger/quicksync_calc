@@ -116,3 +116,15 @@ CREATE INDEX IF NOT EXISTS idx_concurrency_vendor ON concurrency_results(vendor)
 CREATE INDEX IF NOT EXISTS idx_arch_pattern ON cpu_architectures(pattern);
 CREATE INDEX IF NOT EXISTS idx_arch_sort_order ON cpu_architectures(sort_order);
 CREATE INDEX IF NOT EXISTS idx_arch_vendor ON cpu_architectures(vendor);
+
+-- CPU features table for per-CPU metadata (ECC support, etc.)
+-- Tracks features that vary by specific CPU model, not by architecture
+CREATE TABLE IF NOT EXISTS cpu_features (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cpu_raw TEXT UNIQUE NOT NULL,   -- Exact CPU string from benchmark (matches benchmark_results.cpu_raw)
+    ecc_support BOOLEAN DEFAULT 0,  -- Whether this CPU supports ECC memory
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_cpu_features_cpu_raw ON cpu_features(cpu_raw);
