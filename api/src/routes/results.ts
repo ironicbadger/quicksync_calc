@@ -419,10 +419,13 @@ results.get('/filter-counts', async (c) => {
     ]);
 
     // Build generations counts including virtual generations
-    const generationsCounts = Object.fromEntries(genCounts.rows.map(r => [r.value, r.count]));
+    const generationsCounts: Record<string | number, number> = Object.fromEntries(
+      genCounts.rows.map(r => [r.value, r.count as number])
+    );
     for (const vGenCount of virtualGenCounts) {
-      if (vGenCount.rows[0] && vGenCount.rows[0].count > 0) {
-        generationsCounts[vGenCount.rows[0].value] = vGenCount.rows[0].count;
+      const row = vGenCount.rows[0];
+      if (row && typeof row.count === 'number' && row.count > 0 && row.value) {
+        generationsCounts[row.value as string] = row.count;
       }
     }
 
