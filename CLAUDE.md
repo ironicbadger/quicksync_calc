@@ -1,5 +1,9 @@
 # QuickSync Benchmark - Interactive Website & Database Plan
 
+## GitHub
+
+PRs should be created against `ironicbadger/quicksync_calc` (NOT `cptmorgan-rh`).
+
 ## Secrets
 
 Turso database credentials are stored in sops. Use `sops` to decrypt and access them.
