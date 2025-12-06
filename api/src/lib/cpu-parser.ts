@@ -58,7 +58,7 @@ const CPU_PATTERNS: ArchitecturePattern[] = [
   { pattern: /i[3579]-14\d{2}[A-Z]+/, architecture: 'Raptor Lake Refresh', codename: 'RPL-R', releaseYear: 2023, sortOrder: 138 }, // Mobile: i5-1440P
   { pattern: /i[3579]-14\d{3}[A-Z]*/, architecture: 'Raptor Lake Refresh', codename: 'RPL-R', releaseYear: 2023, sortOrder: 140 }, // Desktop: i5-14600K
   { pattern: /Ultra [3579] 1\d{2}[HUP]?/, architecture: 'Meteor Lake', codename: 'MTL', releaseYear: 2023, sortOrder: 150 },
-  { pattern: /Ultra [3579] 2\d{2}[KFS]/, architecture: 'Arrow Lake', codename: 'ARL', releaseYear: 2024, sortOrder: 200 },
+  { pattern: /Ultra [3579] 2\d{2}[KFS]?/, architecture: 'Arrow Lake', codename: 'ARL', releaseYear: 2024, sortOrder: 200 },
   { pattern: /Ultra [3579] 2\d{2}[VU]/, architecture: 'Lunar Lake', codename: 'LNL', releaseYear: 2024, sortOrder: 210 },
   { pattern: /Xeon.*E3-1[23]\d{2}/, architecture: 'Xeon E3', codename: 'Various', releaseYear: 2015, sortOrder: 55 },
   { pattern: /Xeon.*E-2[123]\d{2}/, architecture: 'Xeon E', codename: 'CFL', releaseYear: 2018, sortOrder: 85 },

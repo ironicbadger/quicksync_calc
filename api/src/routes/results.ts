@@ -10,6 +10,33 @@ import { withCache, CACHE_TTL } from '../lib/cache';
 // Preferred display order for test types in charts
 const TEST_ORDER = ['h264_1080p_cpu', 'h264_1080p', 'h264_4k', 'hevc_8bit', 'hevc_4k_10bit'];
 
+// Virtual generation mappings to architectures
+const VIRTUAL_GEN_TO_ARCHITECTURES: Record<string, string[]> = {
+  'ultra-1': ['Meteor Lake'],
+  'ultra-2': ['Arrow Lake', 'Lunar Lake'],
+  'arc': ['Arc Alchemist', 'Arc Battlemage'],
+};
+
+// Parse generation parameter and separate numeric from virtual generations
+function parseGenerations(generation: string | undefined): { numericGens: number[]; virtualGens: string[] } {
+  if (!generation) return { numericGens: [], virtualGens: [] };
+
+  const parts = generation.split(',').map(g => g.trim()).filter(g => g);
+  const numericGens: number[] = [];
+  const virtualGens: string[] = [];
+
+  for (const part of parts) {
+    const num = parseInt(part, 10);
+    if (!isNaN(num)) {
+      numericGens.push(num);
+    } else if (VIRTUAL_GEN_TO_ARCHITECTURES[part]) {
+      virtualGens.push(part);
+    }
+  }
+
+  return { numericGens, virtualGens };
+}
+
 // Sort test names by preferred order, with unknown tests sorted alphabetically at the end
 function sortTestNames(tests: string[]): string[] {
   return [...tests].sort((a, b) => {
@@ -51,10 +78,27 @@ results.get('/', async (c) => {
   const args: (string | number)[] = [vendor];
 
   if (generation) {
-    const gens = generation.split(',').map(g => parseInt(g.trim(), 10)).filter(g => !isNaN(g));
-    if (gens.length > 0) {
-      conditions.push(`cpu_generation IN (${gens.map(() => '?').join(',')})`);
-      args.push(...gens);
+    const { numericGens, virtualGens } = parseGenerations(generation);
+
+    // Build generation filter (numeric generations OR architecture-based virtual generations)
+    const genConditions: string[] = [];
+
+    if (numericGens.length > 0) {
+      genConditions.push(`cpu_generation IN (${numericGens.map(() => '?').join(',')})`);
+      args.push(...numericGens);
+    }
+
+    // Map virtual generations to architectures
+    for (const vGen of virtualGens) {
+      const archs = VIRTUAL_GEN_TO_ARCHITECTURES[vGen];
+      if (archs && archs.length > 0) {
+        genConditions.push(`architecture IN (${archs.map(() => '?').join(',')})`);
+        args.push(...archs);
+      }
+    }
+
+    if (genConditions.length > 0) {
+      conditions.push(`(${genConditions.join(' OR ')})`);
     }
   }
 
@@ -178,7 +222,7 @@ results.get('/filters', async (c) => {
     const db = getDb(c.env);
     const vendor = c.req.query('vendor') || 'intel';
 
-    const [generations, architectures, tests] = await Promise.all([
+    const [generations, architectures, tests, ultraArcArchitectures] = await Promise.all([
       db.execute({
         sql: `SELECT DISTINCT cpu_generation FROM benchmark_results WHERE vendor = ? AND cpu_generation IS NOT NULL ORDER BY cpu_generation`,
         args: [vendor],
@@ -191,12 +235,37 @@ results.get('/filters', async (c) => {
         sql: `SELECT DISTINCT test_name FROM benchmark_results WHERE vendor = ? ORDER BY test_name`,
         args: [vendor],
       }),
+      // Check which Ultra/Arc architectures have data
+      db.execute({
+        sql: `SELECT DISTINCT architecture FROM benchmark_results WHERE vendor = ? AND architecture IN ('Meteor Lake', 'Arrow Lake', 'Lunar Lake', 'Arc Alchemist', 'Arc Battlemage')`,
+        args: [vendor],
+      }),
     ]);
+
+    // Build numeric generations list
+    const numericGenerations = generations.rows.map(r => r.cpu_generation);
+
+    // Add virtual generation identifiers based on available architectures
+    const availableUltraArc = ultraArcArchitectures.rows.map(r => r.architecture);
+    const virtualGenerations: string[] = [];
+
+    // Ultra Series 1: Meteor Lake
+    if (availableUltraArc.includes('Meteor Lake')) {
+      virtualGenerations.push('ultra-1');
+    }
+    // Ultra Series 2: Arrow Lake or Lunar Lake
+    if (availableUltraArc.includes('Arrow Lake') || availableUltraArc.includes('Lunar Lake')) {
+      virtualGenerations.push('ultra-2');
+    }
+    // Arc: Alchemist or Battlemage
+    if (availableUltraArc.includes('Arc Alchemist') || availableUltraArc.includes('Arc Battlemage')) {
+      virtualGenerations.push('arc');
+    }
 
     return {
       success: true,
       filters: {
-        generations: generations.rows.map(r => r.cpu_generation),
+        generations: [...numericGenerations, ...virtualGenerations],
         architectures: architectures.rows.map(r => r.architecture),
         tests: tests.rows.map(r => r.test_name),
       },
@@ -218,11 +287,14 @@ results.get('/filter-counts', async (c) => {
     const baseConditions: string[] = ['vendor = ?'];
     const baseArgs: (string | number)[] = [vendor];
 
-    // Parse current filters
-    const selectedGens = generation ? generation.split(',').map(g => parseInt(g.trim(), 10)).filter(g => !isNaN(g)) : [];
+    // Parse current filters - handle both numeric and virtual generations
+    const { numericGens: selectedGens, virtualGens: selectedVirtualGens } = parseGenerations(generation);
     const selectedArchs = architecture ? architecture.split(',').map(a => a.trim()).filter(a => a) : [];
     const selectedTests = testName ? testName.split(',').map(t => t.trim()).filter(t => t) : [];
     const selectedEcc = ecc ? ecc.split(',').map(e => e.trim().toLowerCase()).filter(e => e === 'yes' || e === 'no') : [];
+
+    // Get architectures implied by selected virtual generations
+    const impliedArchs = selectedVirtualGens.flatMap(vg => VIRTUAL_GEN_TO_ARCHITECTURES[vg] || []);
 
     // Count generations (filtered by architecture and test)
     const genConditions = [...baseConditions];
@@ -296,7 +368,19 @@ results.get('/filter-counts', async (c) => {
       eccArgs.push(...selectedTests);
     }
 
-    const [genCounts, archCounts, testCounts, cpuCounts, submitterCounts, eccYesCount, eccNoCount] = await Promise.all([
+    // Build queries for virtual generation counts (ultra-1, ultra-2, arc)
+    const virtualGenQueries = Object.entries(VIRTUAL_GEN_TO_ARCHITECTURES).map(([vGen, archs]) => {
+      const vGenConditions = [...genConditions];
+      const vGenArgs = [...genArgs];
+      vGenConditions.push(`architecture IN (${archs.map(() => '?').join(',')})`);
+      vGenArgs.push(...archs);
+      return db.execute({
+        sql: `SELECT '${vGen}' as value, ${distinctCount} as count FROM benchmark_results WHERE ${vGenConditions.join(' AND ')}`,
+        args: vGenArgs,
+      });
+    });
+
+    const [genCounts, archCounts, testCounts, cpuCounts, submitterCounts, eccYesCount, eccNoCount, ...virtualGenCounts] = await Promise.all([
       db.execute({
         sql: `SELECT cpu_generation as value, ${distinctCount} as count FROM benchmark_results WHERE ${genConditions.join(' AND ')} AND cpu_generation IS NOT NULL GROUP BY cpu_generation`,
         args: genArgs,
@@ -331,12 +415,21 @@ results.get('/filter-counts', async (c) => {
               AND br.cpu_raw IN (SELECT cpu_raw FROM cpu_features WHERE ecc_support = 0 OR ecc_support IS NULL)`,
         args: eccArgs,
       }),
+      ...virtualGenQueries,
     ]);
+
+    // Build generations counts including virtual generations
+    const generationsCounts = Object.fromEntries(genCounts.rows.map(r => [r.value, r.count]));
+    for (const vGenCount of virtualGenCounts) {
+      if (vGenCount.rows[0] && vGenCount.rows[0].count > 0) {
+        generationsCounts[vGenCount.rows[0].value] = vGenCount.rows[0].count;
+      }
+    }
 
     return {
       success: true,
       counts: {
-        generations: Object.fromEntries(genCounts.rows.map(r => [r.value, r.count])),
+        generations: generationsCounts,
         architectures: Object.fromEntries(archCounts.rows.map(r => [r.value, r.count])),
         tests: Object.fromEntries(testCounts.rows.map(r => [r.value, r.count])),
         cpus: Object.fromEntries(cpuCounts.rows.map(r => [r.value, r.count])),

@@ -776,6 +776,53 @@ cd quicksync_calc
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
   }
 
+  // Virtual generation display names and sort order
+  const VIRTUAL_GEN_DISPLAY = {
+    'ultra-1': 'Ultra 1',
+    'ultra-2': 'Ultra 2',
+    'arc': 'Arc',
+  };
+  const VIRTUAL_GEN_SORT_ORDER = {
+    'ultra-1': 100,  // After 14th gen
+    'ultra-2': 101,
+    'arc': 102,
+  };
+
+  // Format generation for display
+  function formatGeneration(g) {
+    if (VIRTUAL_GEN_DISPLAY[g]) {
+      return VIRTUAL_GEN_DISPLAY[g];
+    }
+    return `${ordinal(g)} Gen`;
+  }
+
+  // Check if a generation value is a virtual generation
+  function isVirtualGen(g) {
+    return typeof g === 'string' && VIRTUAL_GEN_DISPLAY.hasOwnProperty(g);
+  }
+
+  // Sort generations: numeric descending, then virtual generations in order
+  function sortGenerations(generations) {
+    return [...generations].sort((a, b) => {
+      const aIsVirtual = isVirtualGen(a);
+      const bIsVirtual = isVirtualGen(b);
+
+      if (!aIsVirtual && !bIsVirtual) {
+        // Both numeric: descending order
+        return b - a;
+      } else if (aIsVirtual && bIsVirtual) {
+        // Both virtual: by sort order
+        return VIRTUAL_GEN_SORT_ORDER[a] - VIRTUAL_GEN_SORT_ORDER[b];
+      } else if (aIsVirtual) {
+        // a is virtual, b is numeric: virtual comes after numeric
+        return 1;
+      } else {
+        // a is numeric, b is virtual: numeric comes first
+        return -1;
+      }
+    });
+  }
+
   // Dashboard state
   const state = {
     filters: {
@@ -839,7 +886,7 @@ cd quicksync_calc
       const data = await res.json();
 
       if (data.success) {
-        state.filterOptions.generations = data.filters.generations.sort((a, b) => b - a);
+        state.filterOptions.generations = sortGenerations(data.filters.generations);
         state.filterOptions.architectures = data.filters.architectures.sort();
         state.filterOptions.tests = data.filters.tests;
 
@@ -887,7 +934,7 @@ cd quicksync_calc
     genList.innerHTML = state.filterOptions.generations.map(g => `
       <label class="checkbox-item" data-value="${g}">
         <input type="checkbox" value="${g}" data-filter="generation" />
-        <span>${ordinal(g)} Gen</span>
+        <span>${formatGeneration(g)}</span>
         <span class="count"></span>
       </label>
     `).join('');
@@ -1148,15 +1195,18 @@ cd quicksync_calc
 
   // Generation colors for multi-generation chart - high contrast palette
   const genColors = {
-    6: { bg: 'rgba(220, 38, 38, 0.8)', border: 'rgb(220, 38, 38)' },      // Red
-    7: { bg: 'rgba(234, 88, 12, 0.8)', border: 'rgb(234, 88, 12)' },      // Orange
-    8: { bg: 'rgba(120, 120, 130, 0.6)', border: 'rgb(120, 120, 130)' },  // Gray (baseline)
-    9: { bg: 'rgba(202, 138, 4, 0.8)', border: 'rgb(202, 138, 4)' },      // Amber
-    10: { bg: 'rgba(22, 163, 74, 0.8)', border: 'rgb(22, 163, 74)' },     // Green
-    11: { bg: 'rgba(20, 184, 166, 0.8)', border: 'rgb(20, 184, 166)' },   // Teal
-    12: { bg: 'rgba(6, 182, 212, 0.8)', border: 'rgb(6, 182, 212)' },     // Cyan
-    13: { bg: 'rgba(59, 130, 246, 0.85)', border: 'rgb(59, 130, 246)' },  // Blue
-    14: { bg: 'rgba(168, 85, 247, 0.8)', border: 'rgb(168, 85, 247)' },   // Purple
+    6: { bg: 'rgba(220, 38, 38, 0.8)', border: 'rgb(220, 38, 38)' },       // Red
+    7: { bg: 'rgba(234, 88, 12, 0.8)', border: 'rgb(234, 88, 12)' },       // Orange
+    8: { bg: 'rgba(120, 120, 130, 0.6)', border: 'rgb(120, 120, 130)' },   // Gray (baseline)
+    9: { bg: 'rgba(202, 138, 4, 0.8)', border: 'rgb(202, 138, 4)' },       // Amber
+    10: { bg: 'rgba(22, 163, 74, 0.8)', border: 'rgb(22, 163, 74)' },      // Green
+    11: { bg: 'rgba(20, 184, 166, 0.8)', border: 'rgb(20, 184, 166)' },    // Teal
+    12: { bg: 'rgba(6, 182, 212, 0.8)', border: 'rgb(6, 182, 212)' },      // Cyan
+    13: { bg: 'rgba(59, 130, 246, 0.85)', border: 'rgb(59, 130, 246)' },   // Blue
+    14: { bg: 'rgba(168, 85, 247, 0.8)', border: 'rgb(168, 85, 247)' },    // Purple
+    'U1': { bg: 'rgba(236, 72, 153, 0.8)', border: 'rgb(236, 72, 153)' },  // Pink - Ultra Series 1
+    'U2': { bg: 'rgba(139, 92, 246, 0.8)', border: 'rgb(139, 92, 246)' },  // Violet - Ultra Series 2
+    'Arc': { bg: 'rgba(14, 165, 233, 0.8)', border: 'rgb(14, 165, 233)' }, // Sky - Arc GPUs
   };
 
   // Fetch and display generation statistics (when generations or Arc architectures are filtered)
@@ -1781,7 +1831,7 @@ cd quicksync_calc
   window.toggleArchitectureFilter = toggleArchitectureFilter;
 
   // Fetch boxplot data
-  // NOTE: Charts always show all generations + Arc, regardless of filters
+  // NOTE: Charts always show all generations + Ultra + Arc, regardless of filters
   // Architecture filter only affects the results table, not the charts
   async function fetchBoxplotData() {
     const params = new URLSearchParams();
@@ -1793,60 +1843,78 @@ cd quicksync_calc
 
     const metrics = ['avg_fps', 'avg_watts', 'fps_per_watt'];
 
-    // Build Arc params once
+    // Build architecture-specific params
     const arcParams = new URLSearchParams(params);
-    arcParams.set('architecture', 'Alchemist,Battlemage');
+    arcParams.set('architecture', 'Arc Alchemist,Arc Battlemage');
+
+    const u1Params = new URLSearchParams(params);
+    u1Params.set('architecture', 'Meteor Lake');
+
+    const u2Params = new URLSearchParams(params);
+    u2Params.set('architecture', 'Arrow Lake,Lunar Lake');
 
     try {
-      // Fetch all 6 requests in parallel (3 metrics × 2 group types)
+      // Fetch all requests in parallel (3 metrics × 4 group types)
       const responses = await Promise.all(
         metrics.flatMap(metric => [
           fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=cpu_generation&${params}`).then(r => r.json()),
           fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=architecture&${arcParams}`).then(r => r.json()),
+          fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=architecture&${u1Params}`).then(r => r.json()),
+          fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=architecture&${u2Params}`).then(r => r.json()),
         ])
       );
 
-      // Process results - responses are in order: [fps_gen, fps_arc, watts_gen, watts_arc, eff_gen, eff_arc]
-      metrics.forEach((metric, i) => {
-        const data = responses[i * 2];      // Generation data
-        const arcData = responses[i * 2 + 1]; // Arc data
-
-        if (data.success) {
-          let boxplotData = data.boxplot;
-
-          // Merge Arc data with "Arc" label (combining Alchemist and Battlemage into single entries)
-          if (arcData.success && arcData.boxplot.length > 0) {
-            // Group by test and combine Alchemist/Battlemage stats
-            const arcByTest = {};
-            for (const d of arcData.boxplot) {
-              if (!arcByTest[d.test]) {
-                arcByTest[d.test] = {
-                  group: 'Arc',
-                  test: d.test,
-                  min: d.min,
-                  q1: d.q1,
-                  median: d.median,
-                  q3: d.q3,
-                  max: d.max,
-                  count: d.count,
-                  _totalCount: d.count
-                };
-              } else {
-                // Weighted average of stats
-                const existing = arcByTest[d.test];
-                const newTotal = existing._totalCount + d.count;
-                existing.median = (existing.median * existing._totalCount + d.median * d.count) / newTotal;
-                existing.q1 = Math.min(existing.q1, d.q1);
-                existing.q3 = Math.max(existing.q3, d.q3);
-                existing.min = Math.min(existing.min, d.min);
-                existing.max = Math.max(existing.max, d.max);
-                existing.count += d.count;
-                existing._totalCount = newTotal;
-              }
-            }
-            const arcResults = Object.values(arcByTest);
-            boxplotData = [...boxplotData, ...arcResults];
+      // Helper function to combine architecture data into a single group
+      const combineArchData = (archData, groupLabel) => {
+        if (!archData.success || !archData.boxplot || archData.boxplot.length === 0) return [];
+        const byTest = {};
+        for (const d of archData.boxplot) {
+          if (!byTest[d.test]) {
+            byTest[d.test] = {
+              group: groupLabel,
+              test: d.test,
+              min: d.min,
+              q1: d.q1,
+              median: d.median,
+              q3: d.q3,
+              max: d.max,
+              count: d.count,
+              _totalCount: d.count
+            };
+          } else {
+            // Weighted average of stats
+            const existing = byTest[d.test];
+            const newTotal = existing._totalCount + d.count;
+            existing.median = (existing.median * existing._totalCount + d.median * d.count) / newTotal;
+            existing.q1 = Math.min(existing.q1, d.q1);
+            existing.q3 = Math.max(existing.q3, d.q3);
+            existing.min = Math.min(existing.min, d.min);
+            existing.max = Math.max(existing.max, d.max);
+            existing.count += d.count;
+            existing._totalCount = newTotal;
           }
+        }
+        return Object.values(byTest);
+      };
+
+      // Process results - responses are in order: [gen, arc, u1, u2] for each metric
+      metrics.forEach((metric, i) => {
+        const genData = responses[i * 4];
+        const arcData = responses[i * 4 + 1];
+        const u1Data = responses[i * 4 + 2];
+        const u2Data = responses[i * 4 + 3];
+
+        if (genData.success) {
+          let boxplotData = genData.boxplot;
+
+          // Merge Ultra Series 1 (Meteor Lake)
+          boxplotData = [...boxplotData, ...combineArchData(u1Data, 'U1')];
+
+          // Merge Ultra Series 2 (Arrow Lake + Lunar Lake)
+          boxplotData = [...boxplotData, ...combineArchData(u2Data, 'U2')];
+
+          // Merge Arc (Alchemist + Battlemage)
+          boxplotData = [...boxplotData, ...combineArchData(arcData, 'Arc')];
 
           state.boxplotData[metric] = boxplotData;
           updateChart(metric);
@@ -1868,13 +1936,24 @@ cd quicksync_calc
     const canvas = document.getElementById(chartId);
     const boxplotData = state.boxplotData[metric] || [];
 
-    // Group by generation and sort (put "Arc" at the end)
+    // Group by generation and sort (numeric ascending, then U1, U2, Arc at the end)
     // Filter out generations < 6
     const allGroups = [...new Set(boxplotData.map(d => d.group))];
     const numericGroups = allGroups
       .filter(g => !isNaN(parseInt(g)) && parseInt(g) >= 6)
       .sort((a, b) => parseInt(a) - parseInt(b));
-    const nonNumericGroups = allGroups.filter(g => isNaN(parseInt(g))).sort();
+    // Sort non-numeric groups in specific order: U1, U2, Arc
+    const nonNumericOrder = ['U1', 'U2', 'Arc'];
+    const nonNumericGroups = allGroups
+      .filter(g => isNaN(parseInt(g)))
+      .sort((a, b) => {
+        const aIdx = nonNumericOrder.indexOf(a);
+        const bIdx = nonNumericOrder.indexOf(b);
+        if (aIdx === -1 && bIdx === -1) return a.localeCompare(b);
+        if (aIdx === -1) return 1;
+        if (bIdx === -1) return -1;
+        return aIdx - bIdx;
+      });
     const generations = [...numericGroups, ...nonNumericGroups];
     const tests = [...new Set(boxplotData.map(d => d.test))];
 
@@ -1908,7 +1987,12 @@ cd quicksync_calc
     window.charts[chartId] = new Chart(canvas, {
       type: 'bar',
       data: {
-        labels: generations.map(g => isNaN(parseInt(g)) ? g : `Gen ${g}`),
+        labels: generations.map(g => {
+          if (g === 'U1') return 'Ultra 1';
+          if (g === 'U2') return 'Ultra 2';
+          if (isNaN(parseInt(g))) return g;
+          return `Gen ${g}`;
+        }),
         datasets,
       },
       options: {
@@ -1921,9 +2005,12 @@ cd quicksync_calc
             const isNumeric = !isNaN(parseInt(group));
             if (isNumeric) {
               window.toggleGenerationFilter(group);
+            } else if (group === 'U1') {
+              window.toggleGenerationFilter('ultra-1');
+            } else if (group === 'U2') {
+              window.toggleGenerationFilter('ultra-2');
             } else if (group === 'Arc') {
-              window.toggleArchitectureFilter('Alchemist');
-              window.toggleArchitectureFilter('Battlemage');
+              window.toggleGenerationFilter('arc');
             }
           }
         },
