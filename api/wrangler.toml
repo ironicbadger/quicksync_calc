@@ -29,3 +29,12 @@ id = "a55f255136bd456c8d257f12add2c807"
 # - TURSO_AUTH_TOKEN
 # - TURNSTILE_SECRET   - Cloudflare Turnstile secret key for CAPTCHA validation
 # - ADMIN_PASSPHRASE   - Required for direct /api/submit access (bypasses web verification)
+
+# Observability
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
