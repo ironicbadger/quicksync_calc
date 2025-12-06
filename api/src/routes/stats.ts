@@ -5,74 +5,78 @@
 
 import { Hono } from 'hono';
 import { getDb, Env } from '../lib/db';
+import { withCache, CACHE_TTL } from '../lib/cache';
 
 const stats = new Hono<{ Bindings: Env }>();
 
-// Get aggregated stats by architecture and test type
+// Get aggregated stats by architecture and test type (DYNAMIC - 5min cache)
 stats.get('/', async (c) => {
-  const db = getDb(c.env);
-  const vendor = c.req.query('vendor') || 'intel';
-  const groupBy = c.req.query('group_by') || 'architecture'; // architecture or cpu_generation
-  const testFilter = c.req.query('test');
+  return withCache(c.req.raw, CACHE_TTL.DYNAMIC, async () => {
+    const db = getDb(c.env);
+    const vendor = c.req.query('vendor') || 'intel';
+    const groupBy = c.req.query('group_by') || 'architecture'; // architecture or cpu_generation
+    const testFilter = c.req.query('test');
 
-  // Validate group_by
-  const allowedGroupBy = ['architecture', 'cpu_generation'];
-  const groupColumn = allowedGroupBy.includes(groupBy) ? groupBy : 'architecture';
+    // Validate group_by
+    const allowedGroupBy = ['architecture', 'cpu_generation'];
+    const groupColumn = allowedGroupBy.includes(groupBy) ? groupBy : 'architecture';
 
-  let testCondition = '';
-  const args: (string | number)[] = [vendor];
+    let testCondition = '';
+    const args: (string | number)[] = [vendor];
 
-  if (testFilter) {
-    const tests = testFilter.split(',').map(t => t.trim()).filter(t => t);
-    if (tests.length > 0) {
-      testCondition = ` AND test_name IN (${tests.map(() => '?').join(',')})`;
-      args.push(...tests);
+    if (testFilter) {
+      const tests = testFilter.split(',').map(t => t.trim()).filter(t => t);
+      if (tests.length > 0) {
+        testCondition = ` AND test_name IN (${tests.map(() => '?').join(',')})`;
+        args.push(...tests);
+      }
     }
-  }
 
-  const result = await db.execute({
-    sql: `
-      SELECT
-        ${groupColumn},
-        test_name,
-        COUNT(*) as count,
-        AVG(avg_fps) as avg_fps_mean,
-        MIN(avg_fps) as avg_fps_min,
-        MAX(avg_fps) as avg_fps_max,
-        AVG(avg_watts) as avg_watts_mean,
-        MIN(avg_watts) as avg_watts_min,
-        MAX(avg_watts) as avg_watts_max,
-        AVG(fps_per_watt) as efficiency_mean,
-        MIN(fps_per_watt) as efficiency_min,
-        MAX(fps_per_watt) as efficiency_max
-      FROM benchmark_results
-      WHERE vendor = ?
-        AND ${groupColumn} IS NOT NULL
-        AND avg_watts IS NOT NULL
-        AND avg_watts > 0
-        AND avg_watts < 50
-        ${testCondition}
-      GROUP BY ${groupColumn}, test_name
-      ORDER BY ${groupColumn}, test_name
-    `,
-    args,
-  });
+    const result = await db.execute({
+      sql: `
+        SELECT
+          ${groupColumn},
+          test_name,
+          COUNT(*) as count,
+          AVG(avg_fps) as avg_fps_mean,
+          MIN(avg_fps) as avg_fps_min,
+          MAX(avg_fps) as avg_fps_max,
+          AVG(avg_watts) as avg_watts_mean,
+          MIN(avg_watts) as avg_watts_min,
+          MAX(avg_watts) as avg_watts_max,
+          AVG(fps_per_watt) as efficiency_mean,
+          MIN(fps_per_watt) as efficiency_min,
+          MAX(fps_per_watt) as efficiency_max
+        FROM benchmark_results
+        WHERE vendor = ?
+          AND ${groupColumn} IS NOT NULL
+          AND avg_watts IS NOT NULL
+          AND avg_watts > 0
+          AND avg_watts < 50
+          ${testCondition}
+        GROUP BY ${groupColumn}, test_name
+        ORDER BY ${groupColumn}, test_name
+      `,
+      args,
+    });
 
-  return c.json({
-    success: true,
-    group_by: groupColumn,
-    stats: result.rows,
+    return {
+      success: true,
+      group_by: groupColumn,
+      stats: result.rows,
+    };
   });
 });
 
-// Get boxplot data (quartiles) for each group
+// Get boxplot data (quartiles) for each group (DYNAMIC - 5min cache)
 stats.get('/boxplot', async (c) => {
-  const db = getDb(c.env);
-  const vendor = c.req.query('vendor') || 'intel';
-  const metric = c.req.query('metric') || 'avg_fps'; // avg_fps, avg_watts, fps_per_watt
-  const groupBy = c.req.query('group_by') || 'cpu_generation';
-  const testFilter = c.req.query('test');
-  const archFilter = c.req.query('architecture');
+  return withCache(c.req.raw, CACHE_TTL.DYNAMIC, async () => {
+    const db = getDb(c.env);
+    const vendor = c.req.query('vendor') || 'intel';
+    const metric = c.req.query('metric') || 'avg_fps'; // avg_fps, avg_watts, fps_per_watt
+    const groupBy = c.req.query('group_by') || 'cpu_generation';
+    const testFilter = c.req.query('test');
+    const archFilter = c.req.query('architecture');
 
   // Validate inputs
   const allowedMetrics = ['avg_fps', 'avg_watts', 'fps_per_watt'];
@@ -187,40 +191,43 @@ stats.get('/boxplot', async (c) => {
     boxplotData.sort((a, b) => a.group.localeCompare(b.group));
   }
 
-  return c.json({
-    success: true,
-    metric: metricColumn,
-    group_by: groupColumn,
-    boxplot: boxplotData,
+    return {
+      success: true,
+      metric: metricColumn,
+      group_by: groupColumn,
+      boxplot: boxplotData,
+    };
   });
 });
 
-// Get summary stats for the homepage
+// Get summary stats for the homepage (DYNAMIC - 5min cache)
 stats.get('/summary', async (c) => {
-  const db = getDb(c.env);
+  return withCache(c.req.raw, CACHE_TTL.DYNAMIC, async () => {
+    const db = getDb(c.env);
 
-  const result = await db.execute({
-    sql: `
-      SELECT
-        COUNT(*) as total_results,
-        COUNT(DISTINCT cpu_raw) as unique_cpus,
-        COUNT(DISTINCT submitter_id) as unique_submitters,
-        COUNT(DISTINCT architecture) as architectures_count
-      FROM benchmark_results
-    `,
-    args: [],
-  });
+    const result = await db.execute({
+      sql: `
+        SELECT
+          COUNT(*) as total_results,
+          COUNT(DISTINCT cpu_raw) as unique_cpus,
+          COUNT(DISTINCT submitter_id) as unique_submitters,
+          COUNT(DISTINCT architecture) as architectures_count
+        FROM benchmark_results
+      `,
+      args: [],
+    });
 
-  const row = result.rows[0];
+    const row = result.rows[0];
 
-  return c.json({
-    success: true,
-    summary: {
-      total_results: row.total_results,
-      unique_cpus: row.unique_cpus,
-      unique_submitters: row.unique_submitters,
-      architectures_count: row.architectures_count,
-    },
+    return {
+      success: true,
+      summary: {
+        total_results: row.total_results,
+        unique_cpus: row.unique_cpus,
+        unique_submitters: row.unique_submitters,
+        architectures_count: row.architectures_count,
+      },
+    };
   });
 });
 

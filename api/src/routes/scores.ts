@@ -13,6 +13,7 @@
 
 import { Hono } from 'hono';
 import { getDb, Env } from '../lib/db';
+import { withCache, CACHE_TTL } from '../lib/cache';
 
 const scores = new Hono<{ Bindings: Env }>();
 
@@ -50,18 +51,20 @@ interface CpuData {
   tests: CpuTestData[];
 }
 
+// Get scores for all CPUs (SEMI_STATIC - 15min cache)
 scores.get('/', async (c) => {
-  const db = getDb(c.env);
-  const vendor = c.req.query('vendor') || 'intel';
-  const cpuFilter = c.req.query('cpu'); // Optional: filter to specific CPU(s)
+  return withCache(c.req.raw, CACHE_TTL.SEMI_STATIC, async () => {
+    const db = getDb(c.env);
+    const vendor = c.req.query('vendor') || 'intel';
+    const cpuFilter = c.req.query('cpu'); // Optional: filter to specific CPU(s)
 
-  // Get all test types for codec support calculation
-  const allTestTypes = await getAllTestTypes(db, vendor);
-  const totalTestTypes = allTestTypes.length;
+    // Get all test types for codec support calculation
+    const allTestTypes = await getAllTestTypes(db, vendor);
+    const totalTestTypes = allTestTypes.length;
 
-  if (totalTestTypes === 0) {
-    return c.json({ success: true, scores: [], methodology: getMethodology() });
-  }
+    if (totalTestTypes === 0) {
+      return { success: true, scores: [], methodology: getMethodology() };
+    }
 
   // Build CPU filter condition
   const cpuConditions: string[] = ['vendor = ?'];
@@ -209,30 +212,32 @@ scores.get('/', async (c) => {
     });
   }
 
-  // Sort by score descending
-  cpuScores.sort((a, b) => b.score - a.score);
+    // Sort by score descending
+    cpuScores.sort((a, b) => b.score - a.score);
 
-  return c.json({
-    success: true,
-    total_cpus: cpuScores.length,
-    total_test_types: totalTestTypes,
-    scores: cpuScores,
-    methodology: getMethodology(),
+    return {
+      success: true,
+      total_cpus: cpuScores.length,
+      total_test_types: totalTestTypes,
+      scores: cpuScores,
+      methodology: getMethodology(),
+    };
   });
 });
 
-// Get score for results (to be used by /api/results endpoint)
+// Get score for results - lookup map (SEMI_STATIC - 15min cache)
 scores.get('/for-results', async (c) => {
-  const db = getDb(c.env);
-  const vendor = c.req.query('vendor') || 'intel';
+  return withCache(c.req.raw, CACHE_TTL.SEMI_STATIC, async () => {
+    const db = getDb(c.env);
+    const vendor = c.req.query('vendor') || 'intel';
 
-  // Get all test types for codec support calculation
-  const allTestTypes = await getAllTestTypes(db, vendor);
-  const totalTestTypes = allTestTypes.length;
+    // Get all test types for codec support calculation
+    const allTestTypes = await getAllTestTypes(db, vendor);
+    const totalTestTypes = allTestTypes.length;
 
-  if (totalTestTypes === 0) {
-    return c.json({ success: true, scores: {} });
-  }
+    if (totalTestTypes === 0) {
+      return { success: true, scores: {} };
+    }
 
   // Get aggregated data per CPU
   const resultsQuery = await db.execute({
@@ -314,16 +319,17 @@ scores.get('/for-results', async (c) => {
 
     const codecSupportScore = (tests.size / totalTestTypes) * 100;
 
-    scores[cpuRaw] = Math.round(
-      (performanceScore * 0.40) +
-      (efficiencyScore * 0.35) +
-      (codecSupportScore * 0.25)
-    );
-  }
+      scores[cpuRaw] = Math.round(
+        (performanceScore * 0.40) +
+        (efficiencyScore * 0.35) +
+        (codecSupportScore * 0.25)
+      );
+    }
 
-  return c.json({
-    success: true,
-    scores,
+    return {
+      success: true,
+      scores,
+    };
   });
 });
 
