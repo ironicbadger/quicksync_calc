@@ -786,6 +786,8 @@ cd quicksync_calc
       submitter: [],
       ecc: [],
     },
+    // Track previous test filter to avoid unnecessary boxplot refetches
+    _lastTestFilter: [],
     filterOptions: {
       generations: [],
       architectures: [],
@@ -1096,6 +1098,9 @@ cd quicksync_calc
     });
   }
 
+  // Debounce timer for filter changes
+  let filterDebounceTimer = null;
+
   // Handle filter checkbox changes
   function handleFilterChange(e) {
     const filterType = e.target.dataset.filter;
@@ -1111,18 +1116,34 @@ cd quicksync_calc
     }
 
     state.pagination.offset = 0;
-    onFiltersChanged();
+
+    // Debounce API calls to collapse rapid filter clicks
+    clearTimeout(filterDebounceTimer);
+    filterDebounceTimer = setTimeout(() => {
+      onFiltersChanged();
+    }, 150);
   }
 
   // Called when filters change - updates everything
   async function onFiltersChanged() {
-    await Promise.all([
+    // Check if test filter changed (only thing that affects boxplot charts)
+    const testFilterChanged = JSON.stringify(state.filters.test) !== JSON.stringify(state._lastTestFilter);
+    state._lastTestFilter = [...state.filters.test];
+
+    const promises = [
       fetchFilterCounts(),
       fetchResults(),
-      fetchBoxplotData(),
       fetchGenerationStats(),
       fetchCpuStats(),
-    ]);
+    ];
+
+    // Only refetch boxplot data if test filter changed
+    // Charts show all generations + Arc regardless of other filters
+    if (testFilterChanged) {
+      promises.push(fetchBoxplotData());
+    }
+
+    await Promise.all(promises);
   }
 
   // Generation colors for multi-generation chart - high contrast palette
@@ -1772,17 +1793,23 @@ cd quicksync_calc
 
     const metrics = ['avg_fps', 'avg_watts', 'fps_per_watt'];
 
-    for (const metric of metrics) {
-      try {
-        // Fetch CPU generation data (unfiltered by generation/architecture)
-        const res = await fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=cpu_generation&${params}`);
-        const data = await res.json();
+    // Build Arc params once
+    const arcParams = new URLSearchParams(params);
+    arcParams.set('architecture', 'Alchemist,Battlemage');
 
-        // Also fetch Arc GPU data by architecture
-        const arcParams = new URLSearchParams(params);
-        arcParams.set('architecture', 'Alchemist,Battlemage');
-        const arcRes = await fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=architecture&${arcParams}`);
-        const arcData = await arcRes.json();
+    try {
+      // Fetch all 6 requests in parallel (3 metrics × 2 group types)
+      const responses = await Promise.all(
+        metrics.flatMap(metric => [
+          fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=cpu_generation&${params}`).then(r => r.json()),
+          fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=architecture&${arcParams}`).then(r => r.json()),
+        ])
+      );
+
+      // Process results - responses are in order: [fps_gen, fps_arc, watts_gen, watts_arc, eff_gen, eff_arc]
+      metrics.forEach((metric, i) => {
+        const data = responses[i * 2];      // Generation data
+        const arcData = responses[i * 2 + 1]; // Arc data
 
         if (data.success) {
           let boxplotData = data.boxplot;
@@ -1824,9 +1851,9 @@ cd quicksync_calc
           state.boxplotData[metric] = boxplotData;
           updateChart(metric);
         }
-      } catch (e) {
-        console.error(`Failed to fetch ${metric} boxplot:`, e);
-      }
+      });
+    } catch (e) {
+      console.error('Failed to fetch boxplot data:', e);
     }
   }
 
