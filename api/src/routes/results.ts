@@ -5,6 +5,7 @@
 
 import { Hono } from 'hono';
 import { getDb, Env, BenchmarkResult } from '../lib/db';
+import { withCache, CACHE_TTL } from '../lib/cache';
 
 // Preferred display order for test types in charts
 const TEST_ORDER = ['h264_1080p_cpu', 'h264_1080p', 'h264_4k', 'hevc_8bit', 'hevc_4k_10bit'];
@@ -171,190 +172,195 @@ results.get('/', async (c) => {
   });
 });
 
-// Get distinct values for filter dropdowns
+// Get distinct values for filter dropdowns (STATIC - 24h cache)
 results.get('/filters', async (c) => {
-  const db = getDb(c.env);
-  const vendor = c.req.query('vendor') || 'intel';
+  return withCache(c.req.raw, CACHE_TTL.STATIC, async () => {
+    const db = getDb(c.env);
+    const vendor = c.req.query('vendor') || 'intel';
 
-  const [generations, architectures, tests] = await Promise.all([
-    db.execute({
-      sql: `SELECT DISTINCT cpu_generation FROM benchmark_results WHERE vendor = ? AND cpu_generation IS NOT NULL ORDER BY cpu_generation`,
-      args: [vendor],
-    }),
-    db.execute({
-      sql: `SELECT DISTINCT architecture FROM benchmark_results WHERE vendor = ? AND architecture IS NOT NULL ORDER BY architecture`,
-      args: [vendor],
-    }),
-    db.execute({
-      sql: `SELECT DISTINCT test_name FROM benchmark_results WHERE vendor = ? ORDER BY test_name`,
-      args: [vendor],
-    }),
-  ]);
+    const [generations, architectures, tests] = await Promise.all([
+      db.execute({
+        sql: `SELECT DISTINCT cpu_generation FROM benchmark_results WHERE vendor = ? AND cpu_generation IS NOT NULL ORDER BY cpu_generation`,
+        args: [vendor],
+      }),
+      db.execute({
+        sql: `SELECT DISTINCT architecture FROM benchmark_results WHERE vendor = ? AND architecture IS NOT NULL ORDER BY architecture`,
+        args: [vendor],
+      }),
+      db.execute({
+        sql: `SELECT DISTINCT test_name FROM benchmark_results WHERE vendor = ? ORDER BY test_name`,
+        args: [vendor],
+      }),
+    ]);
 
-  return c.json({
-    success: true,
-    filters: {
-      generations: generations.rows.map(r => r.cpu_generation),
-      architectures: architectures.rows.map(r => r.architecture),
-      tests: tests.rows.map(r => r.test_name),
-    },
-  });
-});
-
-// Get filter counts based on current selection (for dynamic filter updates)
-results.get('/filter-counts', async (c) => {
-  const db = getDb(c.env);
-  const vendor = c.req.query('vendor') || 'intel';
-  const generation = c.req.query('generation');
-  const architecture = c.req.query('architecture');
-  const testName = c.req.query('test');
-  const ecc = c.req.query('ecc');
-
-  // Build base conditions
-  const baseConditions: string[] = ['vendor = ?'];
-  const baseArgs: (string | number)[] = [vendor];
-
-  // Parse current filters
-  const selectedGens = generation ? generation.split(',').map(g => parseInt(g.trim(), 10)).filter(g => !isNaN(g)) : [];
-  const selectedArchs = architecture ? architecture.split(',').map(a => a.trim()).filter(a => a) : [];
-  const selectedTests = testName ? testName.split(',').map(t => t.trim()).filter(t => t) : [];
-  const selectedEcc = ecc ? ecc.split(',').map(e => e.trim().toLowerCase()).filter(e => e === 'yes' || e === 'no') : [];
-
-  // Count generations (filtered by architecture and test)
-  const genConditions = [...baseConditions];
-  const genArgs = [...baseArgs];
-  if (selectedArchs.length > 0) {
-    genConditions.push(`architecture IN (${selectedArchs.map(() => '?').join(',')})`);
-    genArgs.push(...selectedArchs);
-  }
-  if (selectedTests.length > 0) {
-    genConditions.push(`test_name IN (${selectedTests.map(() => '?').join(',')})`);
-    genArgs.push(...selectedTests);
-  }
-
-  // Count architectures (filtered by generation and test)
-  const archConditions = [...baseConditions];
-  const archArgs = [...baseArgs];
-  if (selectedGens.length > 0) {
-    archConditions.push(`cpu_generation IN (${selectedGens.map(() => '?').join(',')})`);
-    archArgs.push(...selectedGens);
-  }
-  if (selectedTests.length > 0) {
-    archConditions.push(`test_name IN (${selectedTests.map(() => '?').join(',')})`);
-    archArgs.push(...selectedTests);
-  }
-
-  // Count tests (filtered by generation and architecture)
-  const testConditions = [...baseConditions];
-  const testArgs = [...baseArgs];
-  if (selectedGens.length > 0) {
-    testConditions.push(`cpu_generation IN (${selectedGens.map(() => '?').join(',')})`);
-    testArgs.push(...selectedGens);
-  }
-  if (selectedArchs.length > 0) {
-    testConditions.push(`architecture IN (${selectedArchs.map(() => '?').join(',')})`);
-    testArgs.push(...selectedArchs);
-  }
-
-  // Count CPUs (filtered by generation, architecture, and test)
-  const cpuConditions = [...baseConditions];
-  const cpuArgs = [...baseArgs];
-  if (selectedGens.length > 0) {
-    cpuConditions.push(`cpu_generation IN (${selectedGens.map(() => '?').join(',')})`);
-    cpuArgs.push(...selectedGens);
-  }
-  if (selectedArchs.length > 0) {
-    cpuConditions.push(`architecture IN (${selectedArchs.map(() => '?').join(',')})`);
-    cpuArgs.push(...selectedArchs);
-  }
-  if (selectedTests.length > 0) {
-    cpuConditions.push(`test_name IN (${selectedTests.map(() => '?').join(',')})`);
-    cpuArgs.push(...selectedTests);
-  }
-
-  // Count distinct submissions (by timestamp minute), not individual test rows
-  // Each benchmark run submits ~5 tests, so we group by timestamp to count runs
-  const distinctCount = `COUNT(DISTINCT substr(submitted_at, 1, 16))`;
-
-  // Build ECC filter conditions (filtered by generation, architecture, and test)
-  const eccConditions = [...baseConditions];
-  const eccArgs = [...baseArgs];
-  if (selectedGens.length > 0) {
-    eccConditions.push(`cpu_generation IN (${selectedGens.map(() => '?').join(',')})`);
-    eccArgs.push(...selectedGens);
-  }
-  if (selectedArchs.length > 0) {
-    eccConditions.push(`architecture IN (${selectedArchs.map(() => '?').join(',')})`);
-    eccArgs.push(...selectedArchs);
-  }
-  if (selectedTests.length > 0) {
-    eccConditions.push(`test_name IN (${selectedTests.map(() => '?').join(',')})`);
-    eccArgs.push(...selectedTests);
-  }
-
-  const [genCounts, archCounts, testCounts, cpuCounts, submitterCounts, eccYesCount, eccNoCount] = await Promise.all([
-    db.execute({
-      sql: `SELECT cpu_generation as value, ${distinctCount} as count FROM benchmark_results WHERE ${genConditions.join(' AND ')} AND cpu_generation IS NOT NULL GROUP BY cpu_generation`,
-      args: genArgs,
-    }),
-    db.execute({
-      sql: `SELECT architecture as value, ${distinctCount} as count FROM benchmark_results WHERE ${archConditions.join(' AND ')} AND architecture IS NOT NULL GROUP BY architecture`,
-      args: archArgs,
-    }),
-    db.execute({
-      sql: `SELECT test_name as value, ${distinctCount} as count FROM benchmark_results WHERE ${testConditions.join(' AND ')} GROUP BY test_name`,
-      args: testArgs,
-    }),
-    db.execute({
-      sql: `SELECT cpu_raw as value, ${distinctCount} as count FROM benchmark_results WHERE ${cpuConditions.join(' AND ')} GROUP BY cpu_raw ORDER BY count DESC LIMIT 100`,
-      args: cpuArgs,
-    }),
-    db.execute({
-      sql: `SELECT submitter_id as value, ${distinctCount} as count FROM benchmark_results WHERE ${baseConditions.join(' AND ')} AND submitter_id IS NOT NULL AND submitter_id != '' GROUP BY submitter_id ORDER BY count DESC LIMIT 50`,
-      args: baseArgs,
-    }),
-    // Count CPUs with ECC support
-    db.execute({
-      sql: `SELECT ${distinctCount} as count FROM benchmark_results br
-            WHERE ${eccConditions.join(' AND ')}
-            AND br.cpu_raw IN (SELECT cpu_raw FROM cpu_features WHERE ecc_support = 1)`,
-      args: eccArgs,
-    }),
-    // Count CPUs without ECC support (including those not in cpu_features table)
-    db.execute({
-      sql: `SELECT ${distinctCount} as count FROM benchmark_results br
-            WHERE ${eccConditions.join(' AND ')}
-            AND br.cpu_raw IN (SELECT cpu_raw FROM cpu_features WHERE ecc_support = 0 OR ecc_support IS NULL)`,
-      args: eccArgs,
-    }),
-  ]);
-
-  return c.json({
-    success: true,
-    counts: {
-      generations: Object.fromEntries(genCounts.rows.map(r => [r.value, r.count])),
-      architectures: Object.fromEntries(archCounts.rows.map(r => [r.value, r.count])),
-      tests: Object.fromEntries(testCounts.rows.map(r => [r.value, r.count])),
-      cpus: Object.fromEntries(cpuCounts.rows.map(r => [r.value, r.count])),
-      submitters: Object.fromEntries(submitterCounts.rows.map(r => [r.value, r.count])),
-      ecc: {
-        yes: eccYesCount.rows[0]?.count || 0,
-        no: eccNoCount.rows[0]?.count || 0,
+    return {
+      success: true,
+      filters: {
+        generations: generations.rows.map(r => r.cpu_generation),
+        architectures: architectures.rows.map(r => r.architecture),
+        tests: tests.rows.map(r => r.test_name),
       },
-    },
+    };
   });
 });
 
-// Get aggregated statistics for multiple generations (with 8th gen baseline)
-results.get('/generation-stats', async (c) => {
-  const db = getDb(c.env);
-  const vendor = c.req.query('vendor') || 'intel';
-  const generationParam = c.req.query('generation'); // Can be "12" or "12,13,14"
-  const baselineGen = 8; // Always compare against 8th Gen as baseline
+// Get filter counts based on current selection (REALTIME - 60s cache, filter-dependent)
+results.get('/filter-counts', async (c) => {
+  return withCache(c.req.raw, CACHE_TTL.REALTIME, async () => {
+    const db = getDb(c.env);
+    const vendor = c.req.query('vendor') || 'intel';
+    const generation = c.req.query('generation');
+    const architecture = c.req.query('architecture');
+    const testName = c.req.query('test');
+    const ecc = c.req.query('ecc');
 
+    // Build base conditions
+    const baseConditions: string[] = ['vendor = ?'];
+    const baseArgs: (string | number)[] = [vendor];
+
+    // Parse current filters
+    const selectedGens = generation ? generation.split(',').map(g => parseInt(g.trim(), 10)).filter(g => !isNaN(g)) : [];
+    const selectedArchs = architecture ? architecture.split(',').map(a => a.trim()).filter(a => a) : [];
+    const selectedTests = testName ? testName.split(',').map(t => t.trim()).filter(t => t) : [];
+    const selectedEcc = ecc ? ecc.split(',').map(e => e.trim().toLowerCase()).filter(e => e === 'yes' || e === 'no') : [];
+
+    // Count generations (filtered by architecture and test)
+    const genConditions = [...baseConditions];
+    const genArgs = [...baseArgs];
+    if (selectedArchs.length > 0) {
+      genConditions.push(`architecture IN (${selectedArchs.map(() => '?').join(',')})`);
+      genArgs.push(...selectedArchs);
+    }
+    if (selectedTests.length > 0) {
+      genConditions.push(`test_name IN (${selectedTests.map(() => '?').join(',')})`);
+      genArgs.push(...selectedTests);
+    }
+
+    // Count architectures (filtered by generation and test)
+    const archConditions = [...baseConditions];
+    const archArgs = [...baseArgs];
+    if (selectedGens.length > 0) {
+      archConditions.push(`cpu_generation IN (${selectedGens.map(() => '?').join(',')})`);
+      archArgs.push(...selectedGens);
+    }
+    if (selectedTests.length > 0) {
+      archConditions.push(`test_name IN (${selectedTests.map(() => '?').join(',')})`);
+      archArgs.push(...selectedTests);
+    }
+
+    // Count tests (filtered by generation and architecture)
+    const testConditions = [...baseConditions];
+    const testArgs = [...baseArgs];
+    if (selectedGens.length > 0) {
+      testConditions.push(`cpu_generation IN (${selectedGens.map(() => '?').join(',')})`);
+      testArgs.push(...selectedGens);
+    }
+    if (selectedArchs.length > 0) {
+      testConditions.push(`architecture IN (${selectedArchs.map(() => '?').join(',')})`);
+      testArgs.push(...selectedArchs);
+    }
+
+    // Count CPUs (filtered by generation, architecture, and test)
+    const cpuConditions = [...baseConditions];
+    const cpuArgs = [...baseArgs];
+    if (selectedGens.length > 0) {
+      cpuConditions.push(`cpu_generation IN (${selectedGens.map(() => '?').join(',')})`);
+      cpuArgs.push(...selectedGens);
+    }
+    if (selectedArchs.length > 0) {
+      cpuConditions.push(`architecture IN (${selectedArchs.map(() => '?').join(',')})`);
+      cpuArgs.push(...selectedArchs);
+    }
+    if (selectedTests.length > 0) {
+      cpuConditions.push(`test_name IN (${selectedTests.map(() => '?').join(',')})`);
+      cpuArgs.push(...selectedTests);
+    }
+
+    // Count distinct submissions (by timestamp minute), not individual test rows
+    // Each benchmark run submits ~5 tests, so we group by timestamp to count runs
+    const distinctCount = `COUNT(DISTINCT substr(submitted_at, 1, 16))`;
+
+    // Build ECC filter conditions (filtered by generation, architecture, and test)
+    const eccConditions = [...baseConditions];
+    const eccArgs = [...baseArgs];
+    if (selectedGens.length > 0) {
+      eccConditions.push(`cpu_generation IN (${selectedGens.map(() => '?').join(',')})`);
+      eccArgs.push(...selectedGens);
+    }
+    if (selectedArchs.length > 0) {
+      eccConditions.push(`architecture IN (${selectedArchs.map(() => '?').join(',')})`);
+      eccArgs.push(...selectedArchs);
+    }
+    if (selectedTests.length > 0) {
+      eccConditions.push(`test_name IN (${selectedTests.map(() => '?').join(',')})`);
+      eccArgs.push(...selectedTests);
+    }
+
+    const [genCounts, archCounts, testCounts, cpuCounts, submitterCounts, eccYesCount, eccNoCount] = await Promise.all([
+      db.execute({
+        sql: `SELECT cpu_generation as value, ${distinctCount} as count FROM benchmark_results WHERE ${genConditions.join(' AND ')} AND cpu_generation IS NOT NULL GROUP BY cpu_generation`,
+        args: genArgs,
+      }),
+      db.execute({
+        sql: `SELECT architecture as value, ${distinctCount} as count FROM benchmark_results WHERE ${archConditions.join(' AND ')} AND architecture IS NOT NULL GROUP BY architecture`,
+        args: archArgs,
+      }),
+      db.execute({
+        sql: `SELECT test_name as value, ${distinctCount} as count FROM benchmark_results WHERE ${testConditions.join(' AND ')} GROUP BY test_name`,
+        args: testArgs,
+      }),
+      db.execute({
+        sql: `SELECT cpu_raw as value, ${distinctCount} as count FROM benchmark_results WHERE ${cpuConditions.join(' AND ')} GROUP BY cpu_raw ORDER BY count DESC LIMIT 100`,
+        args: cpuArgs,
+      }),
+      db.execute({
+        sql: `SELECT submitter_id as value, ${distinctCount} as count FROM benchmark_results WHERE ${baseConditions.join(' AND ')} AND submitter_id IS NOT NULL AND submitter_id != '' GROUP BY submitter_id ORDER BY count DESC LIMIT 50`,
+        args: baseArgs,
+      }),
+      // Count CPUs with ECC support
+      db.execute({
+        sql: `SELECT ${distinctCount} as count FROM benchmark_results br
+              WHERE ${eccConditions.join(' AND ')}
+              AND br.cpu_raw IN (SELECT cpu_raw FROM cpu_features WHERE ecc_support = 1)`,
+        args: eccArgs,
+      }),
+      // Count CPUs without ECC support (including those not in cpu_features table)
+      db.execute({
+        sql: `SELECT ${distinctCount} as count FROM benchmark_results br
+              WHERE ${eccConditions.join(' AND ')}
+              AND br.cpu_raw IN (SELECT cpu_raw FROM cpu_features WHERE ecc_support = 0 OR ecc_support IS NULL)`,
+        args: eccArgs,
+      }),
+    ]);
+
+    return {
+      success: true,
+      counts: {
+        generations: Object.fromEntries(genCounts.rows.map(r => [r.value, r.count])),
+        architectures: Object.fromEntries(archCounts.rows.map(r => [r.value, r.count])),
+        tests: Object.fromEntries(testCounts.rows.map(r => [r.value, r.count])),
+        cpus: Object.fromEntries(cpuCounts.rows.map(r => [r.value, r.count])),
+        submitters: Object.fromEntries(submitterCounts.rows.map(r => [r.value, r.count])),
+        ecc: {
+          yes: eccYesCount.rows[0]?.count || 0,
+          no: eccNoCount.rows[0]?.count || 0,
+        },
+      },
+    };
+  });
+});
+
+// Get aggregated statistics for multiple generations (SEMI_STATIC - 15min cache)
+results.get('/generation-stats', async (c) => {
+  const generationParam = c.req.query('generation');
   if (!generationParam) {
     return c.json({ success: false, error: 'generation parameter required' }, 400);
   }
+
+  return withCache(c.req.raw, CACHE_TTL.SEMI_STATIC, async () => {
+    const db = getDb(c.env);
+    const vendor = c.req.query('vendor') || 'intel';
+    const baselineGen = 8; // Always compare against 8th Gen as baseline
 
   // Parse multiple generations
   const generations = generationParam.split(',').map(g => parseInt(g.trim(), 10)).filter(g => !isNaN(g));
@@ -496,34 +502,36 @@ results.get('/generation-stats', async (c) => {
     };
   });
 
-  return c.json({
-    success: true,
-    generations: generations.sort((a, b) => a - b),
-    baseline_generation: baselineGen,
-    baseline_overall: {
-      avg_fps: baselineOverall.overall_avg_fps || 0,
-      avg_watts: baselineOverall.overall_avg_watts || null,
-      fps_per_watt: baselineOverall.overall_fps_per_watt || null,
-    },
-    baseline_by_test: allTests.map(testName => ({
-      test_name: testName,
-      ...(byTestByGen[baselineGen]?.[testName] || { result_count: 0, avg_fps: 0, min_fps: 0, max_fps: 0, avg_watts: null, fps_per_watt: null, avg_speed: null }),
-    })),
-    data: generationsData,
-    all_tests: allTests,
+    return {
+      success: true,
+      generations: generations.sort((a, b) => a - b),
+      baseline_generation: baselineGen,
+      baseline_overall: {
+        avg_fps: baselineOverall.overall_avg_fps || 0,
+        avg_watts: baselineOverall.overall_avg_watts || null,
+        fps_per_watt: baselineOverall.overall_fps_per_watt || null,
+      },
+      baseline_by_test: allTests.map(testName => ({
+        test_name: testName,
+        ...(byTestByGen[baselineGen]?.[testName] || { result_count: 0, avg_fps: 0, min_fps: 0, max_fps: 0, avg_watts: null, fps_per_watt: null, avg_speed: null }),
+      })),
+      data: generationsData,
+      all_tests: allTests,
+    };
   });
 });
 
-// Get aggregated statistics for specific architectures (e.g., Arc GPUs)
+// Get aggregated statistics for specific architectures (SEMI_STATIC - 15min cache)
 results.get('/architecture-stats', async (c) => {
-  const db = getDb(c.env);
-  const vendor = c.req.query('vendor') || 'intel';
-  const archParam = c.req.query('architecture'); // Can be "Alchemist" or "Alchemist,Battlemage"
-  const baselineGen = 8; // Compare against 8th Gen as baseline
-
+  const archParam = c.req.query('architecture');
   if (!archParam) {
     return c.json({ success: false, error: 'architecture parameter required' }, 400);
   }
+
+  return withCache(c.req.raw, CACHE_TTL.SEMI_STATIC, async () => {
+    const db = getDb(c.env);
+    const vendor = c.req.query('vendor') || 'intel';
+    const baselineGen = 8; // Compare against 8th Gen as baseline
 
   // Parse multiple architectures
   const architectures = archParam.split(',').map(a => a.trim()).filter(a => a);
@@ -686,30 +694,32 @@ results.get('/architecture-stats', async (c) => {
     fps_per_watt: baselineByTest[testName]?.fps_per_watt || null,
   }));
 
-  return c.json({
-    success: true,
-    architectures,
-    baseline_generation: baselineGen,
-    baseline_overall: {
-      avg_fps: baselineOverall.overall_avg_fps || 0,
-      avg_watts: baselineOverall.overall_avg_watts || null,
-      fps_per_watt: baselineOverall.overall_fps_per_watt || null,
-    },
-    baseline_by_test: baselineByTestArray,
-    data: architecturesData,
-    all_tests: allTests,
+    return {
+      success: true,
+      architectures,
+      baseline_generation: baselineGen,
+      baseline_overall: {
+        avg_fps: baselineOverall.overall_avg_fps || 0,
+        avg_watts: baselineOverall.overall_avg_watts || null,
+        fps_per_watt: baselineOverall.overall_fps_per_watt || null,
+      },
+      baseline_by_test: baselineByTestArray,
+      data: architecturesData,
+      all_tests: allTests,
+    };
   });
 });
 
-// Get aggregated statistics for specific CPUs
+// Get aggregated statistics for specific CPUs (REALTIME - 60s cache)
 results.get('/cpu-stats', async (c) => {
-  const db = getDb(c.env);
-  const vendor = c.req.query('vendor') || 'intel';
-  const cpuParam = c.req.query('cpu'); // CPU names separated by ||
-
+  const cpuParam = c.req.query('cpu');
   if (!cpuParam) {
     return c.json({ success: false, error: 'cpu parameter required' }, 400);
   }
+
+  return withCache(c.req.raw, CACHE_TTL.REALTIME, async () => {
+    const db = getDb(c.env);
+    const vendor = c.req.query('vendor') || 'intel';
 
   // Parse CPU names (using || delimiter since CPU names can contain commas)
   const cpus = cpuParam.split('||').map(c => c.trim()).filter(c => c);
@@ -833,24 +843,26 @@ results.get('/cpu-stats', async (c) => {
     };
   });
 
-  return c.json({
-    success: true,
-    cpus: cpus,
-    data: cpusData,
-    all_tests: allTests,
+    return {
+      success: true,
+      cpus: cpus,
+      data: cpusData,
+      all_tests: allTests,
+    };
   });
 });
 
-// Get comprehensive detail for a single generation (for generation detail page)
+// Get comprehensive detail for a single generation (SEMI_STATIC - 15min cache)
 results.get('/generation-detail', async (c) => {
-  const db = getDb(c.env);
-  const vendor = c.req.query('vendor') || 'intel';
-  const genParam = c.req.query('generation'); // Can be "8", "12", "ultra-1", "ultra-2"
-  const baselineGen = 8;
-
+  const genParam = c.req.query('generation');
   if (!genParam) {
     return c.json({ success: false, error: 'generation parameter required' }, 400);
   }
+
+  return withCache(c.req.raw, CACHE_TTL.SEMI_STATIC, async () => {
+    const db = getDb(c.env);
+    const vendor = c.req.query('vendor') || 'intel';
+    const baselineGen = 8;
 
   // Handle special generation identifiers
   let generationFilter: { type: 'generation' | 'architecture'; values: (number | string)[] };
@@ -1162,94 +1174,96 @@ results.get('/generation-detail', async (c) => {
     ? Math.round(((currentFpsPerWatt - baselineFpsPerWatt) / baselineFpsPerWatt) * 100)
     : null;
 
-  return c.json({
-    success: true,
-    generation: genParam,
-    display_name: displayName,
-    // Primary architecture (highest-tier variant for backwards compatibility)
-    architecture: {
-      name: archInfo.architecture || null,
-      codename: archInfo.codename || null,
-      release_year: archInfo.release_year || null,
-      igpu_name: archInfo.igpu_name || null,
-      igpu_codename: archInfo.igpu_codename || null,
-      process_nm: archInfo.process_nm || null,
-      max_p_cores: archInfo.max_p_cores || null,
-      max_e_cores: archInfo.max_e_cores || null,
-      tdp_range: archInfo.tdp_range || null,
-      die_layout: archInfo.die_layout || null,
-      gpu_eu_count: archInfo.gpu_eu_count || null,
-    },
-    // All architecture variants (for generations with multiple die variants)
-    architecture_variants: archVariants,
-    has_multiple_variants: hasMultipleVariants,
-    codec_support: {
-      h264_encode: !!archInfo.h264_encode,
-      hevc_8bit_encode: !!archInfo.hevc_8bit_encode,
-      hevc_10bit_encode: !!archInfo.hevc_10bit_encode,
-      vp9_encode: !!archInfo.vp9_encode,
-      av1_encode: !!archInfo.av1_encode,
-    },
-    benchmark_stats: {
-      total_results: (overall.total_results as number) || 0,
-      unique_cpus: (overall.unique_cpus as number) || 0,
-      avg_fps: currentAvgFps,
-      avg_watts: overall.avg_watts || null,
-      fps_per_watt: currentFpsPerWatt,
-      by_test: allTests.map(testName => {
-        const testData = (statsResult.rows as Array<Record<string, unknown>>).find(r => r.test_name === testName);
+    return {
+      success: true,
+      generation: genParam,
+      display_name: displayName,
+      // Primary architecture (highest-tier variant for backwards compatibility)
+      architecture: {
+        name: archInfo.architecture || null,
+        codename: archInfo.codename || null,
+        release_year: archInfo.release_year || null,
+        igpu_name: archInfo.igpu_name || null,
+        igpu_codename: archInfo.igpu_codename || null,
+        process_nm: archInfo.process_nm || null,
+        max_p_cores: archInfo.max_p_cores || null,
+        max_e_cores: archInfo.max_e_cores || null,
+        tdp_range: archInfo.tdp_range || null,
+        die_layout: archInfo.die_layout || null,
+        gpu_eu_count: archInfo.gpu_eu_count || null,
+      },
+      // All architecture variants (for generations with multiple die variants)
+      architecture_variants: archVariants,
+      has_multiple_variants: hasMultipleVariants,
+      codec_support: {
+        h264_encode: !!archInfo.h264_encode,
+        hevc_8bit_encode: !!archInfo.hevc_8bit_encode,
+        hevc_10bit_encode: !!archInfo.hevc_10bit_encode,
+        vp9_encode: !!archInfo.vp9_encode,
+        av1_encode: !!archInfo.av1_encode,
+      },
+      benchmark_stats: {
+        total_results: (overall.total_results as number) || 0,
+        unique_cpus: (overall.unique_cpus as number) || 0,
+        avg_fps: currentAvgFps,
+        avg_watts: overall.avg_watts || null,
+        fps_per_watt: currentFpsPerWatt,
+        by_test: allTests.map(testName => {
+          const testData = (statsResult.rows as Array<Record<string, unknown>>).find(r => r.test_name === testName);
+          return {
+            test_name: testName,
+            result_count: (testData?.result_count as number) || 0,
+            avg_fps: (testData?.avg_fps as number) || 0,
+            min_fps: (testData?.min_fps as number) || 0,
+            max_fps: (testData?.max_fps as number) || 0,
+            avg_watts: testData?.avg_watts || null,
+            fps_per_watt: testData?.fps_per_watt || null,
+            avg_speed: testData?.avg_speed || null,
+          };
+        }),
+      },
+      cpu_models: cpuModelsResult.rows.map((row: Record<string, unknown>) => {
+        const cpuRaw = row.cpu_raw as string;
+        const features = cpuFeaturesResult.rows.find((f: Record<string, unknown>) => f.cpu_raw === cpuRaw);
         return {
-          test_name: testName,
-          result_count: (testData?.result_count as number) || 0,
-          avg_fps: (testData?.avg_fps as number) || 0,
-          min_fps: (testData?.min_fps as number) || 0,
-          max_fps: (testData?.max_fps as number) || 0,
-          avg_watts: testData?.avg_watts || null,
-          fps_per_watt: testData?.fps_per_watt || null,
-          avg_speed: testData?.avg_speed || null,
+          cpu_raw: cpuRaw,
+          result_count: row.result_count as number,
+          avg_fps: row.avg_fps as number,
+          fps_per_watt: row.fps_per_watt as number | null,
+          ecc_support: features ? !!features.ecc_support : false,
         };
       }),
-    },
-    cpu_models: cpuModelsResult.rows.map((row: Record<string, unknown>) => {
-      const cpuRaw = row.cpu_raw as string;
-      const features = cpuFeaturesResult.rows.find((f: Record<string, unknown>) => f.cpu_raw === cpuRaw);
-      return {
-        cpu_raw: cpuRaw,
-        result_count: row.result_count as number,
-        avg_fps: row.avg_fps as number,
-        fps_per_watt: row.fps_per_watt as number | null,
-        ecc_support: features ? !!features.ecc_support : false,
-      };
-    }),
-    timeline: {
-      all_generations: uniqueTimeline,
-      current_position: currentPosition,
-      previous: currentPosition > 0 ? uniqueTimeline[currentPosition - 1] : null,
-      next: currentPosition < uniqueTimeline.length - 1 ? uniqueTimeline[currentPosition + 1] : null,
-    },
-    baseline_comparison: {
-      baseline_generation: baselineGen,
-      fps_diff_percent: fpsDiffPercent,
-      efficiency_diff_percent: efficiencyDiffPercent,
-    },
-    baseline_by_test: allTests.map(testName => {
-      const testData = (baselineByTestResult.rows as Array<Record<string, unknown>>).find(r => r.test_name === testName);
-      return {
-        test_name: testName,
-        avg_fps: (testData?.avg_fps as number) || 0,
-        avg_watts: testData?.avg_watts || null,
-        fps_per_watt: testData?.fps_per_watt || null,
-      };
-    }),
+      timeline: {
+        all_generations: uniqueTimeline,
+        current_position: currentPosition,
+        previous: currentPosition > 0 ? uniqueTimeline[currentPosition - 1] : null,
+        next: currentPosition < uniqueTimeline.length - 1 ? uniqueTimeline[currentPosition + 1] : null,
+      },
+      baseline_comparison: {
+        baseline_generation: baselineGen,
+        fps_diff_percent: fpsDiffPercent,
+        efficiency_diff_percent: efficiencyDiffPercent,
+      },
+      baseline_by_test: allTests.map(testName => {
+        const testData = (baselineByTestResult.rows as Array<Record<string, unknown>>).find(r => r.test_name === testName);
+        return {
+          test_name: testName,
+          avg_fps: (testData?.avg_fps as number) || 0,
+          avg_watts: testData?.avg_watts || null,
+          fps_per_watt: testData?.fps_per_watt || null,
+        };
+      }),
+    };
   });
 });
 
-// Get all architectures with metadata (for timeline and overview)
+// Get all architectures with metadata (STATIC - 24h cache)
 results.get('/architectures', async (c) => {
-  const db = getDb(c.env);
-  const vendor = c.req.query('vendor') || 'intel';
+  return withCache(c.req.raw, CACHE_TTL.STATIC, async () => {
+    const db = getDb(c.env);
+    const vendor = c.req.query('vendor') || 'intel';
 
-  const result = await db.execute({
+    const result = await db.execute({
     sql: `
       SELECT DISTINCT
         architecture,
@@ -1286,42 +1300,44 @@ results.get('/architectures', async (c) => {
     return true;
   });
 
-  return c.json({
-    success: true,
-    architectures: architectures.map((row: Record<string, unknown>) => ({
-      architecture: row.architecture,
-      codename: row.codename,
-      release_year: row.release_year,
-      release_quarter: row.release_quarter,
-      sort_order: row.sort_order,
-      igpu_name: row.igpu_name,
-      igpu_codename: row.igpu_codename,
-      process_nm: row.process_nm,
-      max_p_cores: row.max_p_cores,
-      max_e_cores: row.max_e_cores,
-      tdp_range: row.tdp_range,
-      die_layout: row.die_layout,
-      gpu_eu_count: row.gpu_eu_count,
-      codec_support: {
-        h264_encode: !!row.h264_encode,
-        hevc_8bit_encode: !!row.hevc_8bit_encode,
-        hevc_10bit_encode: !!row.hevc_10bit_encode,
-        vp9_encode: !!row.vp9_encode,
-        av1_encode: !!row.av1_encode,
-      },
-    })),
+    return {
+      success: true,
+      architectures: architectures.map((row: Record<string, unknown>) => ({
+        architecture: row.architecture,
+        codename: row.codename,
+        release_year: row.release_year,
+        release_quarter: row.release_quarter,
+        sort_order: row.sort_order,
+        igpu_name: row.igpu_name,
+        igpu_codename: row.igpu_codename,
+        process_nm: row.process_nm,
+        max_p_cores: row.max_p_cores,
+        max_e_cores: row.max_e_cores,
+        tdp_range: row.tdp_range,
+        die_layout: row.die_layout,
+        gpu_eu_count: row.gpu_eu_count,
+        codec_support: {
+          h264_encode: !!row.h264_encode,
+          hevc_8bit_encode: !!row.hevc_8bit_encode,
+          hevc_10bit_encode: !!row.hevc_10bit_encode,
+          vp9_encode: !!row.vp9_encode,
+          av1_encode: !!row.av1_encode,
+        },
+      })),
+    };
   });
 });
 
-// Get Arc GPU models with individual stats (not merged)
+// Get Arc GPU models with individual stats (SEMI_STATIC - 15min cache)
 results.get('/arc-models', async (c) => {
-  const db = getDb(c.env);
-  const vendor = c.req.query('vendor') || 'intel';
-  const archFilter = c.req.query('architecture'); // Optional: "Alchemist" or "Battlemage"
+  return withCache(c.req.raw, CACHE_TTL.SEMI_STATIC, async () => {
+    const db = getDb(c.env);
+    const vendor = c.req.query('vendor') || 'intel';
+    const archFilter = c.req.query('architecture'); // Optional: "Alchemist" or "Battlemage"
 
-  // Build architecture filter
-  let archCondition = `architecture LIKE 'Arc%'`;
-  const args: (string | number)[] = [vendor];
+    // Build architecture filter
+    let archCondition = `architecture LIKE 'Arc%'`;
+    const args: (string | number)[] = [vendor];
 
   if (archFilter) {
     const archs = archFilter.split(',').map((a: string) => a.trim()).filter((a: string) => a);
@@ -1428,34 +1444,35 @@ results.get('/arc-models', async (c) => {
       .filter(Boolean);
   }
 
-  return c.json({
-    success: true,
-    architectures: archMetadata.rows.map((row: Record<string, unknown>) => ({
-      architecture: row.architecture,
-      codename: row.codename,
-      release_year: row.release_year,
-      igpu_name: row.igpu_name,
-      igpu_codename: row.igpu_codename,
-      process_nm: row.process_nm,
-      tdp_range: row.tdp_range,
-      die_layout: row.die_layout,
-      gpu_eu_count: row.gpu_eu_count,
-      codec_support: {
-        h264_encode: !!row.h264_encode,
-        hevc_8bit_encode: !!row.hevc_8bit_encode,
-        hevc_10bit_encode: !!row.hevc_10bit_encode,
-        vp9_encode: !!row.vp9_encode,
-        av1_encode: !!row.av1_encode,
-      },
-    })),
-    models: Array.from(modelMap.values()).sort((a, b) => {
-      // Sort by architecture first, then by model name
-      if (a.architecture !== b.architecture) {
-        return a.architecture.localeCompare(b.architecture);
-      }
-      return a.model_name.localeCompare(b.model_name);
-    }),
-    all_tests: sortTestNames(Array.from(new Set(modelsResult.rows.map((r: Record<string, unknown>) => r.test_name as string)))),
+    return {
+      success: true,
+      architectures: archMetadata.rows.map((row: Record<string, unknown>) => ({
+        architecture: row.architecture,
+        codename: row.codename,
+        release_year: row.release_year,
+        igpu_name: row.igpu_name,
+        igpu_codename: row.igpu_codename,
+        process_nm: row.process_nm,
+        tdp_range: row.tdp_range,
+        die_layout: row.die_layout,
+        gpu_eu_count: row.gpu_eu_count,
+        codec_support: {
+          h264_encode: !!row.h264_encode,
+          hevc_8bit_encode: !!row.hevc_8bit_encode,
+          hevc_10bit_encode: !!row.hevc_10bit_encode,
+          vp9_encode: !!row.vp9_encode,
+          av1_encode: !!row.av1_encode,
+        },
+      })),
+      models: Array.from(modelMap.values()).sort((a, b) => {
+        // Sort by architecture first, then by model name
+        if (a.architecture !== b.architecture) {
+          return a.architecture.localeCompare(b.architecture);
+        }
+        return a.model_name.localeCompare(b.model_name);
+      }),
+      all_tests: sortTestNames(Array.from(new Set(modelsResult.rows.map((r: Record<string, unknown>) => r.test_name as string)))),
+    };
   });
 });
 

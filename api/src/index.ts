@@ -37,14 +37,8 @@ app.use('*', cors({
   maxAge: 86400,
 }));
 
-// Add Cache-Control headers to GET requests to reduce repeat API calls
-app.use('/api/*', async (c, next) => {
-  await next();
-  if (c.req.method === 'GET') {
-    // Cache for 60 seconds - data doesn't change frequently
-    c.header('Cache-Control', 'public, max-age=60');
-  }
-});
+// Cache-Control is now handled per-endpoint with tiered TTLs
+// See api/src/lib/cache.ts for cache utility
 
 // Health check
 app.get('/', (c) => {
