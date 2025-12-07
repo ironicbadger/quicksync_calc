@@ -96,7 +96,7 @@ Extend Jellyfin with benchmark dependencies:
 
 ```dockerfile
 # k8s/Dockerfile
-FROM jellyfin/jellyfin:latest
+FROM docker.io/jellyfin/jellyfin:latest
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     intel-gpu-tools \
@@ -147,7 +147,7 @@ spec:
       # Init container: validate QSV is available before downloading videos
       initContainers:
       - name: check-qsv
-        image: jellyfin/jellyfin:latest
+        image: docker.io/jellyfin/jellyfin:latest
         command: ['sh', '-c']
         args:
           - |
