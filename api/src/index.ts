@@ -1,19 +1,19 @@
 /**
  * QuickSync Benchmark API
- * Cloudflare Worker for submitting and querying benchmark results.
+ * Cloudflare Worker for submitting benchmark results.
+ *
+ * Data is stored in R2 as a single JSON file.
+ * Frontend loads data directly from R2 and does client-side filtering.
  */
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
-import { Env } from './lib/db';
+import { Env } from './lib/r2';
 
 import submit from './routes/submit';
 import submitPending from './routes/submit-pending';
 import submitConcurrency from './routes/submit-concurrency';
-import results from './routes/results';
-import stats from './routes/stats';
-import scores from './routes/scores';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -37,31 +37,20 @@ app.use('*', cors({
   maxAge: 86400,
 }));
 
-// Cache-Control is now handled per-endpoint with tiered TTLs
-// See api/src/lib/cache.ts for cache utility
-
 // Health check
 app.get('/', (c) => {
   return c.json({
     name: 'QuickSync Benchmark API',
-    version: '1.0.0',
+    version: '2.0.0',
+    storage: 'R2 JSON',
     endpoints: {
       'POST /api/submit': 'Submit benchmark results (requires passphrase)',
       'POST /api/submit/pending': 'Upload results for web verification',
       'GET /api/submit/pending/:token': 'Get pending results for preview',
       'POST /api/submit/pending/confirm': 'Confirm submission with Turnstile',
       'POST /api/submit-concurrency': 'Submit concurrency benchmark results',
-      'GET /api/results': 'Query benchmark results',
-      'GET /api/results/filters': 'Get available filter values',
-      'GET /api/stats': 'Get aggregated statistics',
-      'GET /api/stats/boxplot': 'Get boxplot data for charts',
-      'GET /api/stats/summary': 'Get summary statistics',
-      'GET /api/scores': 'Get CPU scores with methodology',
-      'GET /api/scores/for-results': 'Get score lookup map for all CPUs',
-      'GET /api/results/generation-detail': 'Get comprehensive data for a generation page',
-      'GET /api/results/architectures': 'Get all CPU architectures with metadata',
-      'GET /api/results/arc-models': 'Get Arc GPU models with individual stats',
     },
+    data: 'Frontend loads data from R2: https://data.quicksync.ktz.me/benchmarks.json',
   });
 });
 
@@ -69,13 +58,10 @@ app.get('/health', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Mount routes
+// Mount routes (only submission routes - data is served from R2)
 app.route('/api/submit/pending', submitPending);
 app.route('/api/submit', submit);
 app.route('/api/submit-concurrency', submitConcurrency);
-app.route('/api/results', results);
-app.route('/api/stats', stats);
-app.route('/api/scores', scores);
 
 // 404 handler
 app.notFound((c) => {

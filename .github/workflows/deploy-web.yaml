@@ -36,12 +36,6 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: api
-          secrets: |
-            TURSO_URL
-            TURSO_AUTH_TOKEN
-        env:
-          TURSO_URL: ${{ secrets.TURSO_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
 
   deploy-web:
     name: Deploy Website to Cloudflare Pages

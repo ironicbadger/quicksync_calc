@@ -3,7 +3,10 @@ import Layout from '../layouts/Layout.astro';
 import ResultsTable from '../components/ResultsTable.astro';
 import BoxplotChart from '../components/charts/BoxplotChart.astro';
 
+// API URL for submission endpoints only (data now loaded from R2)
 const API_URL = import.meta.env.PUBLIC_API_URL || 'https://quicksync-api.ktz.me';
+// R2 public URL for benchmark data
+const DATA_URL = 'https://pub-c66d7559b64a430ca682a4bd624f04d8.r2.dev/benchmarks.json';
 ---
 
 <Layout title="QuickSync Benchmarks - Intel Quick Sync Video Performance">
@@ -768,7 +771,10 @@ cd quicksync_calc
   }
 </style>
 
-<script define:vars={{ API_URL }}>
+<script define:vars={{ API_URL, DATA_URL }}>
+  // Global benchmark data (loaded once from R2)
+  let benchmarkData = null;
+
   // Helper function to format ordinal numbers (1st, 2nd, 3rd, 4th, etc.)
   function ordinal(n) {
     const s = ['th', 'st', 'nd', 'rd'];
@@ -863,68 +869,162 @@ cd quicksync_calc
     'hevc_4k_10bit': { bg: 'rgba(168, 85, 247, 0.7)', border: 'rgb(168, 85, 247)' },  // Purple
   };
 
-  // Fetch summary stats
+  // Fetch summary stats (from local data)
   async function fetchSummary() {
     try {
-      const res = await fetch(`${API_URL}/api/stats/summary`);
-      const data = await res.json();
-
-      if (data.success) {
-        document.getElementById('total-results').textContent = data.summary.total_results.toLocaleString();
-        document.getElementById('unique-cpus').textContent = data.summary.unique_cpus.toLocaleString();
-        document.getElementById('architectures-count').textContent = data.summary.architectures_count.toLocaleString();
-      }
+      document.getElementById('total-results').textContent = benchmarkData.meta.totalResults.toLocaleString();
+      document.getElementById('unique-cpus').textContent = benchmarkData.meta.uniqueCpus.toLocaleString();
+      document.getElementById('architectures-count').textContent = benchmarkData.meta.architecturesCount.toLocaleString();
     } catch (e) {
       console.error('Failed to fetch summary:', e);
     }
   }
 
-  // Fetch filter options (initial list of all options)
+  // Fetch filter options (from local data)
   async function fetchFilters() {
     try {
-      const res = await fetch(`${API_URL}/api/results/filters`);
-      const data = await res.json();
+      // Extract unique values from benchmark data
+      const generations = new Set();
+      const architectures = new Set();
+      const tests = new Set();
 
-      if (data.success) {
-        state.filterOptions.generations = sortGenerations(data.filters.generations);
-        state.filterOptions.architectures = data.filters.architectures.sort();
-        state.filterOptions.tests = data.filters.tests;
-
-        // Initial render
-        renderFilters();
+      for (const r of benchmarkData.results) {
+        if (r.cpu_generation !== null) generations.add(String(r.cpu_generation));
+        // Map architectures to virtual generations
+        if (r.architecture === 'Meteor Lake' || r.architecture === 'Lunar Lake') generations.add('ultra-1');
+        if (r.architecture === 'Arrow Lake') generations.add('ultra-2');
+        if (r.architecture === 'Alchemist' || r.architecture === 'Battlemage') generations.add('arc');
+        if (r.architecture) architectures.add(r.architecture);
+        if (r.test_name) tests.add(r.test_name);
       }
+
+      state.filterOptions.generations = sortGenerations(Array.from(generations));
+      state.filterOptions.architectures = Array.from(architectures).sort();
+      state.filterOptions.tests = Array.from(tests);
+
+      // Initial render
+      renderFilters();
     } catch (e) {
       console.error('Failed to fetch filters:', e);
     }
   }
 
-  // Fetch filter counts based on current selections
+  // Fetch filter counts based on current selections (from local data)
   async function fetchFilterCounts() {
-    const params = new URLSearchParams();
-    if (state.filters.generation.length > 0) {
-      params.set('generation', state.filters.generation.join(','));
-    }
-    if (state.filters.architecture.length > 0) {
-      params.set('architecture', state.filters.architecture.join(','));
-    }
-    if (state.filters.test.length > 0) {
-      params.set('test', state.filters.test.join(','));
-    }
-    if (state.filters.ecc.length > 0) {
-      params.set('ecc', state.filters.ecc.join(','));
-    }
-
     try {
-      const res = await fetch(`${API_URL}/api/results/filter-counts?${params}`);
-      const data = await res.json();
+      const filtered = filterResultsLocal(benchmarkData, state.filters);
 
-      if (data.success) {
-        state.filterCounts = data.counts;
-        updateFilterCounts();
+      const generations = {};
+      const architectures = {};
+      const tests = {};
+      const cpus = {};
+      const submitters = {};
+      let eccYes = 0;
+      let eccNo = 0;
+
+      for (const r of filtered) {
+        // Generations
+        if (r.cpu_generation !== null) {
+          const gen = String(r.cpu_generation);
+          generations[gen] = (generations[gen] || 0) + 1;
+        }
+
+        // Virtual generations
+        if (r.architecture === 'Meteor Lake' || r.architecture === 'Lunar Lake') {
+          generations['ultra-1'] = (generations['ultra-1'] || 0) + 1;
+        }
+        if (r.architecture === 'Arrow Lake') {
+          generations['ultra-2'] = (generations['ultra-2'] || 0) + 1;
+        }
+        if (r.architecture === 'Alchemist' || r.architecture === 'Battlemage') {
+          generations['arc'] = (generations['arc'] || 0) + 1;
+        }
+
+        // Architectures
+        if (r.architecture) {
+          architectures[r.architecture] = (architectures[r.architecture] || 0) + 1;
+        }
+
+        // Tests
+        tests[r.test_name] = (tests[r.test_name] || 0) + 1;
+
+        // CPUs
+        cpus[r.cpu_raw] = (cpus[r.cpu_raw] || 0) + 1;
+
+        // Submitters
+        if (r.submitter_id) {
+          submitters[r.submitter_id] = (submitters[r.submitter_id] || 0) + 1;
+        }
+
+        // ECC
+        const hasEcc = benchmarkData.cpuFeatures[r.cpu_raw]?.ecc_support ?? false;
+        if (hasEcc) eccYes++;
+        else eccNo++;
       }
+
+      state.filterCounts = {
+        generations,
+        architectures,
+        tests,
+        cpus,
+        submitters,
+        ecc: { yes: eccYes, no: eccNo },
+      };
+      updateFilterCounts();
     } catch (e) {
       console.error('Failed to fetch filter counts:', e);
     }
+  }
+
+  // Filter results locally based on current filter state
+  function filterResultsLocal(data, filters) {
+    return data.results.filter(r => {
+      // Generation filter (including virtual generations)
+      if (filters.generation.length > 0) {
+        const gen = String(r.cpu_generation);
+        const isUltra1 = r.architecture === 'Meteor Lake' || r.architecture === 'Lunar Lake';
+        const isUltra2 = r.architecture === 'Arrow Lake';
+        const isArc = r.architecture === 'Alchemist' || r.architecture === 'Battlemage';
+
+        const matchesGen = filters.generation.includes(gen);
+        const matchesUltra1 = filters.generation.includes('ultra-1') && isUltra1;
+        const matchesUltra2 = filters.generation.includes('ultra-2') && isUltra2;
+        const matchesArc = filters.generation.includes('arc') && isArc;
+
+        if (!matchesGen && !matchesUltra1 && !matchesUltra2 && !matchesArc) {
+          return false;
+        }
+      }
+
+      // Architecture filter
+      if (filters.architecture.length > 0 && r.architecture) {
+        if (!filters.architecture.includes(r.architecture)) return false;
+      }
+
+      // Test filter
+      if (filters.test.length > 0) {
+        if (!filters.test.includes(r.test_name)) return false;
+      }
+
+      // CPU filter
+      if (filters.cpu.length > 0) {
+        if (!filters.cpu.includes(r.cpu_raw)) return false;
+      }
+
+      // Submitter filter
+      if (filters.submitter.length > 0) {
+        if (!r.submitter_id || !filters.submitter.includes(r.submitter_id)) return false;
+      }
+
+      // ECC filter
+      if (filters.ecc.length > 0) {
+        const hasEcc = data.cpuFeatures[r.cpu_raw]?.ecc_support ?? false;
+        if (filters.ecc.includes('yes') && !hasEcc) return false;
+        if (filters.ecc.includes('no') && hasEcc) return false;
+      }
+
+      return true;
+    });
   }
 
   // Render filter checkboxes
@@ -1209,7 +1309,7 @@ cd quicksync_calc
     'Arc': { bg: 'rgba(14, 165, 233, 0.8)', border: 'rgb(14, 165, 233)' }, // Sky - Arc GPUs
   };
 
-  // Fetch and display generation statistics (when generations or Arc architectures are filtered)
+  // Fetch and display generation statistics (from local data)
   async function fetchGenerationStats() {
     const statsContainer = document.getElementById('generation-stats');
     const statsSummary = document.getElementById('gen-stats-summary');
@@ -1232,115 +1332,112 @@ cd quicksync_calc
     }
 
     try {
-      let data;
+      // Helper to compute stats from results
+      function computeGroupStats(results, groupKey, isArc = false) {
+        const byTest = {};
+        const uniqueCpus = new Set();
 
-      // Helper to combine Arc architectures into single "Arc" entry
-      const combineArcData = (arcData) => {
-        if (!arcData.success || !arcData.data || arcData.data.length === 0) return null;
+        for (const r of results) {
+          uniqueCpus.add(r.cpu_raw);
+          if (!byTest[r.test_name]) byTest[r.test_name] = [];
+          byTest[r.test_name].push(r);
+        }
 
-        // Combine all Arc architectures into one entry
-        const combined = {
-          architecture: 'Arc',
-          generation: 'Arc',
-          isArc: true,
+        const by_test = Object.entries(byTest).map(([testName, testResults]) => {
+          const fpsVals = testResults.map(r => r.avg_fps);
+          const wattsVals = testResults.filter(r => r.avg_watts !== null).map(r => r.avg_watts);
+          const effVals = testResults.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt);
+
+          return {
+            test_name: testName,
+            result_count: testResults.length,
+            avg_fps: fpsVals.reduce((a, b) => a + b, 0) / fpsVals.length,
+            avg_watts: wattsVals.length > 0 ? wattsVals.reduce((a, b) => a + b, 0) / wattsVals.length : null,
+            fps_per_watt: effVals.length > 0 ? effVals.reduce((a, b) => a + b, 0) / effVals.length : null,
+          };
+        });
+
+        const allFps = results.map(r => r.avg_fps);
+        const allWatts = results.filter(r => r.avg_watts !== null).map(r => r.avg_watts);
+        const allEff = results.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt);
+
+        return {
+          generation: groupKey,
+          architecture: isArc ? 'Arc' : (results[0]?.architecture || null),
+          isArc,
           overall: {
-            total_results: 0,
-            unique_cpus: 0,
-            avg_fps: 0,
-            avg_watts: null,
-            fps_per_watt: null
+            total_results: results.length,
+            unique_cpus: uniqueCpus.size,
+            avg_fps: allFps.length > 0 ? allFps.reduce((a, b) => a + b, 0) / allFps.length : 0,
+            avg_watts: allWatts.length > 0 ? allWatts.reduce((a, b) => a + b, 0) / allWatts.length : null,
+            fps_per_watt: allEff.length > 0 ? allEff.reduce((a, b) => a + b, 0) / allEff.length : null,
           },
-          by_test: []
-        };
-
-        // Sum up overall stats
-        let fpsSum = 0, fpsCount = 0;
-        let wattsSum = 0, wattsCount = 0;
-        let effSum = 0, effCount = 0;
-
-        for (const archData of arcData.data) {
-          combined.overall.total_results += archData.overall.total_results || 0;
-          combined.overall.unique_cpus += archData.overall.unique_cpus || 0;
-          if (archData.overall.avg_fps) { fpsSum += archData.overall.avg_fps * archData.overall.total_results; fpsCount += archData.overall.total_results; }
-          if (archData.overall.avg_watts) { wattsSum += archData.overall.avg_watts * archData.overall.total_results; wattsCount += archData.overall.total_results; }
-          if (archData.overall.fps_per_watt) { effSum += archData.overall.fps_per_watt * archData.overall.total_results; effCount += archData.overall.total_results; }
-        }
-
-        combined.overall.avg_fps = fpsCount > 0 ? fpsSum / fpsCount : 0;
-        combined.overall.avg_watts = wattsCount > 0 ? wattsSum / wattsCount : null;
-        combined.overall.fps_per_watt = effCount > 0 ? effSum / effCount : null;
-
-        // Combine by_test data
-        const testMap = {};
-        for (const archData of arcData.data) {
-          for (const test of archData.by_test || []) {
-            if (!testMap[test.test_name]) {
-              testMap[test.test_name] = { ...test, _count: test.result_count || 1 };
-            } else {
-              const existing = testMap[test.test_name];
-              const newCount = test.result_count || 1;
-              const totalCount = existing._count + newCount;
-              // Weighted average
-              existing.avg_fps = (existing.avg_fps * existing._count + (test.avg_fps || 0) * newCount) / totalCount;
-              existing.avg_watts = existing.avg_watts && test.avg_watts
-                ? (existing.avg_watts * existing._count + test.avg_watts * newCount) / totalCount
-                : existing.avg_watts || test.avg_watts;
-              existing.fps_per_watt = existing.fps_per_watt && test.fps_per_watt
-                ? (existing.fps_per_watt * existing._count + test.fps_per_watt * newCount) / totalCount
-                : existing.fps_per_watt || test.fps_per_watt;
-              existing.result_count = (existing.result_count || 0) + (test.result_count || 0);
-              existing._count = totalCount;
-            }
-          }
-        }
-        combined.by_test = Object.values(testMap);
-
-        return combined;
-      };
-
-      // Fetch either generation stats or architecture stats
-      if (hasArcFilter && !hasGenFilter) {
-        // Only Arc selected - use architecture-stats endpoint (always fetch both Alchemist and Battlemage)
-        const res = await fetch(`${API_URL}/api/results/architecture-stats?architecture=Alchemist,Battlemage`);
-        const arcData = await res.json();
-        const combinedArc = combineArcData(arcData);
-
-        data = {
-          success: arcData.success,
-          generations: [],
-          baseline_overall: arcData.baseline_overall,
-          baseline_by_test: arcData.baseline_by_test || [],
-          data: combinedArc ? [combinedArc] : [],
-          all_tests: arcData.all_tests || []
-        };
-      } else if (hasGenFilter && !hasArcFilter) {
-        // Only generations selected - use generation-stats endpoint
-        const generations = state.filters.generation.join(',');
-        const res = await fetch(`${API_URL}/api/results/generation-stats?generation=${generations}`);
-        data = await res.json();
-      } else {
-        // Both selected - fetch both and combine
-        const [genRes, arcRes] = await Promise.all([
-          fetch(`${API_URL}/api/results/generation-stats?generation=${state.filters.generation.join(',')}`),
-          fetch(`${API_URL}/api/results/architecture-stats?architecture=Alchemist,Battlemage`)
-        ]);
-        const genData = await genRes.json();
-        const arcData = await arcRes.json();
-        const combinedArc = combineArcData(arcData);
-
-        // Combine the data
-        data = {
-          success: genData.success,
-          generations: genData.generations || [],
-          baseline_overall: genData.baseline_overall || arcData.baseline_overall,
-          baseline_by_test: genData.baseline_by_test || [],
-          data: [
-            ...(genData.data || []),
-            ...(combinedArc ? [combinedArc] : [])
-          ],
-          all_tests: [...new Set([...(genData.all_tests || []), ...(arcData.all_tests || [])])].sort()
+          by_test,
         };
       }
+
+      // Build data structure
+      const data = {
+        success: true,
+        generations: [],
+        data: [],
+        all_tests: new Set(),
+        baseline_overall: null,
+        baseline_by_test: [],
+      };
+
+      // Get baseline (8th gen) data
+      const baselineResults = benchmarkData.results.filter(r => r.cpu_generation === 8);
+      if (baselineResults.length > 0) {
+        const baselineStats = computeGroupStats(baselineResults, '8');
+        data.baseline_overall = baselineStats.overall;
+        data.baseline_by_test = baselineStats.by_test;
+        baselineStats.by_test.forEach(t => data.all_tests.add(t.test_name));
+      }
+
+      // Process generation filters
+      for (const gen of state.filters.generation) {
+        let results;
+        let groupKey = gen;
+        let isArc = false;
+
+        if (gen === 'ultra-1') {
+          results = benchmarkData.results.filter(r =>
+            r.architecture === 'Meteor Lake' || r.architecture === 'Lunar Lake'
+          );
+        } else if (gen === 'ultra-2') {
+          results = benchmarkData.results.filter(r => r.architecture === 'Arrow Lake');
+        } else if (gen === 'arc') {
+          results = benchmarkData.results.filter(r =>
+            r.architecture === 'Alchemist' || r.architecture === 'Battlemage'
+          );
+          isArc = true;
+        } else {
+          const genNum = parseInt(gen);
+          results = benchmarkData.results.filter(r => r.cpu_generation === genNum);
+          data.generations.push(genNum);
+        }
+
+        if (results.length > 0) {
+          const stats = computeGroupStats(results, groupKey, isArc);
+          data.data.push(stats);
+          stats.by_test.forEach(t => data.all_tests.add(t.test_name));
+        }
+      }
+
+      // Process Arc architecture filter (if selected via architecture filter)
+      if (hasArcFilter && !state.filters.generation.includes('arc')) {
+        const arcResults = benchmarkData.results.filter(r =>
+          r.architecture === 'Alchemist' || r.architecture === 'Battlemage'
+        );
+        if (arcResults.length > 0) {
+          const arcStats = computeGroupStats(arcResults, 'Arc', true);
+          data.data.push(arcStats);
+          arcStats.by_test.forEach(t => data.all_tests.add(t.test_name));
+        }
+      }
+
+      data.all_tests = Array.from(data.all_tests).sort();
 
       if (!data.success || !data.data || data.data.length === 0) {
         statsContainer.style.display = 'none';
@@ -1608,7 +1705,7 @@ cd quicksync_calc
     { bg: 'rgba(20, 184, 166, 0.8)', border: 'rgb(20, 184, 166)' },    // Teal
   ];
 
-  // Fetch and display CPU statistics (when CPUs are filtered)
+  // Fetch and display CPU statistics (from local data)
   async function fetchCpuStats() {
     const statsContainer = document.getElementById('cpu-stats');
     const statsSummary = document.getElementById('cpu-stats-summary');
@@ -1625,11 +1722,66 @@ cd quicksync_calc
       return;
     }
 
-    const cpus = state.filters.cpu.join('||');
-
     try {
-      const res = await fetch(`${API_URL}/api/results/cpu-stats?cpu=${encodeURIComponent(cpus)}`);
-      const data = await res.json();
+      // Build CPU stats from local data
+      const cpuList = state.filters.cpu;
+      const filtered = benchmarkData.results.filter(r => cpuList.includes(r.cpu_raw));
+
+      // Group by CPU
+      const byCpu = {};
+      for (const r of filtered) {
+        if (!byCpu[r.cpu_raw]) byCpu[r.cpu_raw] = [];
+        byCpu[r.cpu_raw].push(r);
+      }
+
+      // Build stats for each CPU
+      const cpuData = Object.entries(byCpu).map(([cpu, results]) => {
+        const byTest = {};
+        for (const r of results) {
+          if (!byTest[r.test_name]) byTest[r.test_name] = [];
+          byTest[r.test_name].push(r);
+        }
+
+        const by_test = Object.entries(byTest).map(([testName, testResults]) => {
+          const fpsVals = testResults.map(r => r.avg_fps);
+          const wattsVals = testResults.filter(r => r.avg_watts !== null).map(r => r.avg_watts);
+          const effVals = testResults.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt);
+
+          return {
+            test_name: testName,
+            result_count: testResults.length,
+            avg_fps: fpsVals.reduce((a, b) => a + b, 0) / fpsVals.length,
+            avg_watts: wattsVals.length > 0 ? wattsVals.reduce((a, b) => a + b, 0) / wattsVals.length : null,
+            fps_per_watt: effVals.length > 0 ? effVals.reduce((a, b) => a + b, 0) / effVals.length : null,
+          };
+        });
+
+        const allFps = results.map(r => r.avg_fps);
+        const allWatts = results.filter(r => r.avg_watts !== null).map(r => r.avg_watts);
+        const allEff = results.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt);
+
+        return {
+          cpu_raw: cpu,
+          architecture: results[0]?.architecture || null,
+          cpu_generation: results[0]?.cpu_generation || null,
+          overall: {
+            total_results: results.length,
+            avg_fps: allFps.length > 0 ? allFps.reduce((a, b) => a + b, 0) / allFps.length : 0,
+            avg_watts: allWatts.length > 0 ? allWatts.reduce((a, b) => a + b, 0) / allWatts.length : null,
+            fps_per_watt: allEff.length > 0 ? allEff.reduce((a, b) => a + b, 0) / allEff.length : null,
+          },
+          by_test,
+        };
+      });
+
+      // Get all test names
+      const allTests = [...new Set(filtered.map(r => r.test_name))].sort();
+
+      const data = {
+        success: true,
+        data: cpuData,
+        all_tests: allTests,
+      };
 
       if (!data.success || !data.data || data.data.length === 0) {
         statsContainer.style.display = 'none';
@@ -1830,96 +1982,85 @@ cd quicksync_calc
   // Make it globally accessible for chart click handler
   window.toggleArchitectureFilter = toggleArchitectureFilter;
 
-  // Fetch boxplot data
+  // Fetch boxplot data (from local data)
   // NOTE: Charts always show all generations + Ultra + Arc, regardless of filters
   // Architecture filter only affects the results table, not the charts
   async function fetchBoxplotData() {
-    const params = new URLSearchParams();
-    if (state.filters.test.length > 0) {
-      params.set('test', state.filters.test.join(','));
-    }
-    // Don't filter charts by generation or architecture - they always show all data
-    // The filters only affect the results table
-
-    const metrics = ['avg_fps', 'avg_watts', 'fps_per_watt'];
-
-    // Build architecture-specific params
-    const arcParams = new URLSearchParams(params);
-    arcParams.set('architecture', 'Arc Alchemist,Arc Battlemage');
-
-    const u1Params = new URLSearchParams(params);
-    u1Params.set('architecture', 'Meteor Lake');
-
-    const u2Params = new URLSearchParams(params);
-    u2Params.set('architecture', 'Arrow Lake,Lunar Lake');
-
     try {
-      // Fetch all requests in parallel (3 metrics × 4 group types)
-      const responses = await Promise.all(
-        metrics.flatMap(metric => [
-          fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=cpu_generation&${params}`).then(r => r.json()),
-          fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=architecture&${arcParams}`).then(r => r.json()),
-          fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=architecture&${u1Params}`).then(r => r.json()),
-          fetch(`${API_URL}/api/stats/boxplot?metric=${metric}&group_by=architecture&${u2Params}`).then(r => r.json()),
-        ])
-      );
+      const metrics = ['avg_fps', 'avg_watts', 'fps_per_watt'];
 
-      // Helper function to combine architecture data into a single group
-      const combineArchData = (archData, groupLabel) => {
-        if (!archData.success || !archData.boxplot || archData.boxplot.length === 0) return [];
-        const byTest = {};
-        for (const d of archData.boxplot) {
-          if (!byTest[d.test]) {
-            byTest[d.test] = {
-              group: groupLabel,
-              test: d.test,
-              min: d.min,
-              q1: d.q1,
-              median: d.median,
-              q3: d.q3,
-              max: d.max,
-              count: d.count,
-              _totalCount: d.count
-            };
+      // Filter only by test type for charts
+      let filtered = benchmarkData.results;
+      if (state.filters.test.length > 0) {
+        filtered = filtered.filter(r => state.filters.test.includes(r.test_name));
+      }
+
+      // Helper to compute percentile
+      function percentile(sorted, p) {
+        const idx = (p / 100) * (sorted.length - 1);
+        const lower = Math.floor(idx);
+        const upper = Math.ceil(idx);
+        if (lower === upper) return sorted[lower];
+        return sorted[lower] + (idx - lower) * (sorted[upper] - sorted[lower]);
+      }
+
+      // Helper to compute boxplot stats for a group
+      function computeBoxplot(results, metric, groupKey, testName) {
+        const values = results
+          .filter(r => r[metric] !== null)
+          .map(r => r[metric])
+          .sort((a, b) => a - b);
+
+        if (values.length === 0) return null;
+
+        return {
+          group: groupKey,
+          test: testName,
+          min: values[0],
+          q1: percentile(values, 25),
+          median: percentile(values, 50),
+          q3: percentile(values, 75),
+          max: values[values.length - 1],
+          count: values.length,
+        };
+      }
+
+      for (const metric of metrics) {
+        const boxplotData = [];
+
+        // Group by generation
+        const byGenAndTest = {};
+        for (const r of filtered) {
+          let groupKey;
+
+          // Determine group
+          if (r.architecture === 'Meteor Lake' || r.architecture === 'Lunar Lake') {
+            groupKey = 'U1';
+          } else if (r.architecture === 'Arrow Lake') {
+            groupKey = 'U2';
+          } else if (r.architecture === 'Alchemist' || r.architecture === 'Battlemage') {
+            groupKey = 'Arc';
+          } else if (r.cpu_generation !== null) {
+            groupKey = String(r.cpu_generation);
           } else {
-            // Weighted average of stats
-            const existing = byTest[d.test];
-            const newTotal = existing._totalCount + d.count;
-            existing.median = (existing.median * existing._totalCount + d.median * d.count) / newTotal;
-            existing.q1 = Math.min(existing.q1, d.q1);
-            existing.q3 = Math.max(existing.q3, d.q3);
-            existing.min = Math.min(existing.min, d.min);
-            existing.max = Math.max(existing.max, d.max);
-            existing.count += d.count;
-            existing._totalCount = newTotal;
+            continue; // Skip if no generation info
           }
+
+          const key = `${groupKey}|${r.test_name}`;
+          if (!byGenAndTest[key]) byGenAndTest[key] = [];
+          byGenAndTest[key].push(r);
         }
-        return Object.values(byTest);
-      };
 
-      // Process results - responses are in order: [gen, arc, u1, u2] for each metric
-      metrics.forEach((metric, i) => {
-        const genData = responses[i * 4];
-        const arcData = responses[i * 4 + 1];
-        const u1Data = responses[i * 4 + 2];
-        const u2Data = responses[i * 4 + 3];
-
-        if (genData.success) {
-          let boxplotData = genData.boxplot;
-
-          // Merge Ultra Series 1 (Meteor Lake)
-          boxplotData = [...boxplotData, ...combineArchData(u1Data, 'U1')];
-
-          // Merge Ultra Series 2 (Arrow Lake + Lunar Lake)
-          boxplotData = [...boxplotData, ...combineArchData(u2Data, 'U2')];
-
-          // Merge Arc (Alchemist + Battlemage)
-          boxplotData = [...boxplotData, ...combineArchData(arcData, 'Arc')];
-
-          state.boxplotData[metric] = boxplotData;
-          updateChart(metric);
+        // Compute stats for each group+test
+        for (const [key, results] of Object.entries(byGenAndTest)) {
+          const [groupKey, testName] = key.split('|');
+          const stats = computeBoxplot(results, metric, groupKey, testName);
+          if (stats) boxplotData.push(stats);
         }
-      });
+
+        state.boxplotData[metric] = boxplotData;
+        updateChart(metric);
+      }
     } catch (e) {
       console.error('Failed to fetch boxplot data:', e);
     }
@@ -2070,92 +2211,115 @@ cd quicksync_calc
     });
   }
 
-  // Fetch CPU scores
+  // Fetch CPU scores (computed from local data)
   async function fetchCpuScores() {
     try {
-      const res = await fetch(`${API_URL}/api/scores/for-results`);
-      const data = await res.json();
-      if (data.success) {
-        state.cpuScores = data.scores;
+      // Group results by CPU
+      const byCpu = {};
+      for (const r of benchmarkData.results) {
+        if (!byCpu[r.cpu_raw]) byCpu[r.cpu_raw] = [];
+        byCpu[r.cpu_raw].push(r);
       }
+
+      // Get max values for normalization
+      const allFps = benchmarkData.results.map(r => r.avg_fps);
+      const allEfficiency = benchmarkData.results.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt);
+      const maxFps = Math.max(...allFps);
+      const maxEfficiency = Math.max(...allEfficiency);
+
+      // Get architecture codec support lookup
+      const archCodecs = {};
+      for (const arch of benchmarkData.architectures) {
+        archCodecs[arch.architecture] = {
+          av1: arch.av1_encode,
+          hevc10: arch.hevc_10bit_encode,
+          vp9: arch.vp9_encode,
+        };
+      }
+
+      const scores = {};
+
+      for (const [cpu, results] of Object.entries(byCpu)) {
+        const avgFps = results.reduce((sum, r) => sum + r.avg_fps, 0) / results.length;
+        const effResults = results.filter(r => r.fps_per_watt !== null);
+        const avgEfficiency = effResults.length > 0
+          ? effResults.reduce((sum, r) => sum + r.fps_per_watt, 0) / effResults.length
+          : 0;
+
+        // Normalize to 0-100
+        const fpsScore = (avgFps / maxFps) * 100;
+        const efficiencyScore = maxEfficiency > 0 ? (avgEfficiency / maxEfficiency) * 100 : 0;
+
+        // Codec support score (based on architecture)
+        const arch = results[0]?.architecture;
+        const codecs = arch ? archCodecs[arch] : null;
+        let codecScore = 50; // Base score
+        if (codecs) {
+          if (codecs.av1) codecScore += 25;
+          if (codecs.hevc10) codecScore += 15;
+          if (codecs.vp9) codecScore += 10;
+        }
+
+        // Weighted average: 40% performance + 35% efficiency + 25% codec support
+        const score = Math.round(fpsScore * 0.4 + efficiencyScore * 0.35 + codecScore * 0.25);
+        scores[cpu] = Math.min(100, Math.max(0, score));
+      }
+
+      state.cpuScores = scores;
     } catch (e) {
       console.error('Failed to fetch CPU scores:', e);
     }
   }
 
-  // Fetch results table
+  // Fetch results table (from local data)
   async function fetchResults() {
-    const params = new URLSearchParams();
-
-    if (state.filters.generation.length > 0) {
-      params.set('generation', state.filters.generation.join(','));
-    }
-    if (state.filters.architecture.length > 0) {
-      params.set('architecture', state.filters.architecture.join(','));
-    }
-    if (state.filters.test.length > 0) {
-      params.set('test', state.filters.test.join(','));
-    }
-    if (state.filters.cpu.length > 0) {
-      params.set('cpu', state.filters.cpu.join('||'));
-    }
-    if (state.filters.submitter.length > 0) {
-      params.set('submitter_id', state.filters.submitter[0]); // Single submitter filter
-    }
-    if (state.filters.ecc.length > 0) {
-      params.set('ecc', state.filters.ecc.join(','));
-    }
-
-    // Score sorting is done client-side since scores aren't in the database
-    const sortingByScore = state.sort.column === 'score';
-    if (sortingByScore) {
-      // For score sorting, fetch more results to sort client-side, then paginate
-      params.set('sort', 'submitted_at');
-      params.set('order', 'desc');
-      params.set('limit', '1000'); // Fetch more for client-side sorting
-      params.set('offset', '0');
-    } else {
-      params.set('sort', state.sort.column);
-      params.set('order', state.sort.order);
-      params.set('limit', state.pagination.limit);
-      params.set('offset', state.pagination.offset);
-    }
-
     try {
-      const res = await fetch(`${API_URL}/api/results?${params}`);
-      const data = await res.json();
+      let filtered = filterResultsLocal(benchmarkData, state.filters);
+      const total = filtered.length;
 
-      if (data.success) {
-        let results = data.results;
-        let total = data.total;
+      // Sort
+      const sortCol = state.sort.column;
+      const sortOrder = state.sort.order;
 
-        // Client-side score sorting
-        if (sortingByScore) {
-          results = results.sort((a, b) => {
-            const scoreA = state.cpuScores[a.cpu_raw] ?? -1;
-            const scoreB = state.cpuScores[b.cpu_raw] ?? -1;
-            return state.sort.order === 'desc' ? scoreB - scoreA : scoreA - scoreB;
-          });
+      filtered = [...filtered].sort((a, b) => {
+        let aVal, bVal;
 
-          // Apply pagination after sorting
-          const start = state.pagination.offset;
-          const end = start + state.pagination.limit;
-          results = results.slice(start, end);
+        if (sortCol === 'score') {
+          aVal = state.cpuScores[a.cpu_raw] ?? -1;
+          bVal = state.cpuScores[b.cpu_raw] ?? -1;
+        } else {
+          aVal = a[sortCol];
+          bVal = b[sortCol];
         }
 
-        renderResults(results, total, state.cpuScores);
+        // Handle nulls
+        if (aVal === null || aVal === undefined) aVal = sortOrder === 'asc' ? Infinity : -Infinity;
+        if (bVal === null || bVal === undefined) bVal = sortOrder === 'asc' ? Infinity : -Infinity;
 
-        // Update filtered count
-        document.getElementById('filtered-results').textContent = total.toLocaleString();
+        // Compare
+        if (typeof aVal === 'string') {
+          return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        }
+        return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+      });
 
-        // Update pagination
-        const currentPage = Math.floor(state.pagination.offset / state.pagination.limit) + 1;
-        const totalPages = Math.ceil(total / state.pagination.limit);
+      // Paginate
+      const start = state.pagination.offset;
+      const end = start + state.pagination.limit;
+      const results = filtered.slice(start, end);
 
-        document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages}`;
-        document.getElementById('prev-page').disabled = state.pagination.offset === 0;
-        document.getElementById('next-page').disabled = state.pagination.offset + state.pagination.limit >= total;
-      }
+      renderResults(results, total, state.cpuScores);
+
+      // Update filtered count
+      document.getElementById('filtered-results').textContent = total.toLocaleString();
+
+      // Update pagination
+      const currentPage = Math.floor(state.pagination.offset / state.pagination.limit) + 1;
+      const totalPages = Math.ceil(total / state.pagination.limit);
+
+      document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages}`;
+      document.getElementById('prev-page').disabled = state.pagination.offset === 0;
+      document.getElementById('next-page').disabled = state.pagination.offset + state.pagination.limit >= total;
     } catch (e) {
       console.error('Failed to fetch results:', e);
     }
@@ -2292,6 +2456,16 @@ cd quicksync_calc
 
   // Initialize
   async function init() {
+    // Load benchmark data from R2 first
+    try {
+      const res = await fetch(DATA_URL);
+      benchmarkData = await res.json();
+      console.log(`Loaded ${benchmarkData.meta.totalResults} benchmark results from R2`);
+    } catch (e) {
+      console.error('Failed to load benchmark data:', e);
+      return;
+    }
+
     await Promise.all([
       fetchSummary(),
       fetchFilters(),

@@ -1,7 +1,5 @@
 ---
 import Layout from '../layouts/Layout.astro';
-
-const API_URL = import.meta.env.PUBLIC_API_URL || 'https://quicksync-api.ktz.me';
 ---
 
 <Layout title="CPU Leaderboard - QuickSync Benchmarks">
@@ -381,7 +379,9 @@ const API_URL = import.meta.env.PUBLIC_API_URL || 'https://quicksync-api.ktz.me'
   }
 </style>
 
-<script define:vars={{ API_URL }}>
+<script is:inline>
+  const DATA_URL = 'https://pub-c66d7559b64a430ca682a4bd624f04d8.r2.dev/benchmarks.json';
+
   let allScores = [];
   let architectures = [];
   let showAll = false;
@@ -402,7 +402,7 @@ const API_URL = import.meta.env.PUBLIC_API_URL || 'https://quicksync-api.ktz.me'
   function getCpuLink(architecture, generation) {
     // Arc GPUs link to Arc pages
     if (architecture && (architecture.includes('Arc') || architecture === 'Alchemist' || architecture === 'Battlemage')) {
-      return '/gpu/arc/all';
+      return '/cpu/gen/arc';
     }
     // Meteor Lake links to Ultra Series 1
     if (architecture === 'Meteor Lake') {
@@ -429,18 +429,90 @@ const API_URL = import.meta.env.PUBLIC_API_URL || 'https://quicksync-api.ktz.me'
     return `<span title="${cpuRaw}">${displayName}</span>`;
   }
 
-  // Fetch scores from API
+  function avg(values) {
+    if (values.length === 0) return 0;
+    return values.reduce((a, b) => a + b, 0) / values.length;
+  }
+
+  // Calculate scores from R2 data
+  function calculateScores(data) {
+    const byCpu = {};
+    for (const r of data.results) {
+      if (!byCpu[r.cpu_raw]) byCpu[r.cpu_raw] = [];
+      byCpu[r.cpu_raw].push(r);
+    }
+
+    const cpuAvgFps = [];
+    const cpuAvgEfficiency = [];
+
+    for (const [cpu, results] of Object.entries(byCpu)) {
+      cpuAvgFps.push({ cpu, fps: avg(results.map(r => r.avg_fps)) });
+      const effResults = results.filter(r => r.fps_per_watt !== null);
+      if (effResults.length > 0) {
+        cpuAvgEfficiency.push({ cpu, eff: avg(effResults.map(r => r.fps_per_watt)) });
+      }
+    }
+
+    cpuAvgFps.sort((a, b) => a.fps - b.fps);
+    cpuAvgEfficiency.sort((a, b) => a.eff - b.eff);
+
+    const fpsPercentile = {};
+    cpuAvgFps.forEach((item, idx) => {
+      fpsPercentile[item.cpu] = Math.round((idx / (cpuAvgFps.length - 1)) * 100);
+    });
+
+    const effPercentile = {};
+    cpuAvgEfficiency.forEach((item, idx) => {
+      effPercentile[item.cpu] = Math.round((idx / (cpuAvgEfficiency.length - 1)) * 100);
+    });
+
+    const archCodecs = {};
+    for (const arch of data.architectures) {
+      archCodecs[arch.architecture] = {
+        av1: arch.av1_encode,
+        hevc10: arch.hevc_10bit_encode,
+        vp9: arch.vp9_encode,
+      };
+    }
+
+    const scores = [];
+    for (const [cpu, results] of Object.entries(byCpu)) {
+      const perfScore = fpsPercentile[cpu] ?? 50;
+      const effScore = effPercentile[cpu] ?? 50;
+
+      const arch = results[0]?.architecture;
+      const codecs = arch ? archCodecs[arch] : null;
+      let codecScore = 50;
+      if (codecs) {
+        if (codecs.av1) codecScore += 25;
+        if (codecs.hevc10) codecScore += 15;
+        if (codecs.vp9) codecScore += 10;
+      }
+
+      const score = Math.min(100, Math.max(0, Math.round(perfScore * 0.4 + effScore * 0.35 + codecScore * 0.25)));
+
+      scores.push({
+        cpu_raw: cpu,
+        architecture: results[0]?.architecture || null,
+        cpu_generation: results[0]?.cpu_generation || null,
+        score,
+      });
+    }
+
+    return scores.sort((a, b) => b.score - a.score);
+  }
+
+  // Fetch data from R2 and calculate scores
   async function fetchScores() {
     try {
-      const res = await fetch(`${API_URL}/api/scores`);
+      const res = await fetch(DATA_URL);
+      if (!res.ok) throw new Error(`Failed to load data: ${res.status}`);
       const data = await res.json();
 
-      if (data.success) {
-        allScores = data.scores;
-        architectures = [...new Set(allScores.map(s => s.architecture).filter(Boolean))].sort();
-        populateArchFilter();
-        renderLeaderboard();
-      }
+      allScores = calculateScores(data);
+      architectures = [...new Set(allScores.map(s => s.architecture).filter(Boolean))].sort();
+      populateArchFilter();
+      renderLeaderboard();
     } catch (e) {
       console.error('Failed to fetch scores:', e);
       document.getElementById('leaderboard-body').innerHTML =
