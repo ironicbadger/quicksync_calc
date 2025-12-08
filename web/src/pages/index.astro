@@ -2211,7 +2211,7 @@ cd quicksync_calc
     });
   }
 
-  // Fetch CPU scores (computed from local data)
+  // Fetch CPU scores (computed from local data using percentile ranking)
   async function fetchCpuScores() {
     try {
       // Group results by CPU
@@ -2221,11 +2221,35 @@ cd quicksync_calc
         byCpu[r.cpu_raw].push(r);
       }
 
-      // Get max values for normalization
-      const allFps = benchmarkData.results.map(r => r.avg_fps);
-      const allEfficiency = benchmarkData.results.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt);
-      const maxFps = Math.max(...allFps);
-      const maxEfficiency = Math.max(...allEfficiency);
+      // Calculate average FPS and efficiency per CPU
+      const cpuAvgFps = [];
+      const cpuAvgEfficiency = [];
+
+      for (const [cpu, results] of Object.entries(byCpu)) {
+        const avgFps = results.reduce((sum, r) => sum + r.avg_fps, 0) / results.length;
+        cpuAvgFps.push({ cpu, fps: avgFps });
+
+        const effResults = results.filter(r => r.fps_per_watt !== null);
+        if (effResults.length > 0) {
+          const avgEfficiency = effResults.reduce((sum, r) => sum + r.fps_per_watt, 0) / effResults.length;
+          cpuAvgEfficiency.push({ cpu, eff: avgEfficiency });
+        }
+      }
+
+      // Sort by FPS and efficiency (ascending for percentile calculation)
+      cpuAvgFps.sort((a, b) => a.fps - b.fps);
+      cpuAvgEfficiency.sort((a, b) => a.eff - b.eff);
+
+      // Calculate percentile ranks (0-100 based on position in sorted array)
+      const fpsPercentile = {};
+      cpuAvgFps.forEach((item, idx) => {
+        fpsPercentile[item.cpu] = Math.round((idx / (cpuAvgFps.length - 1)) * 100);
+      });
+
+      const effPercentile = {};
+      cpuAvgEfficiency.forEach((item, idx) => {
+        effPercentile[item.cpu] = Math.round((idx / (cpuAvgEfficiency.length - 1)) * 100);
+      });
 
       // Get architecture codec support lookup
       const archCodecs = {};
@@ -2240,15 +2264,8 @@ cd quicksync_calc
       const scores = {};
 
       for (const [cpu, results] of Object.entries(byCpu)) {
-        const avgFps = results.reduce((sum, r) => sum + r.avg_fps, 0) / results.length;
-        const effResults = results.filter(r => r.fps_per_watt !== null);
-        const avgEfficiency = effResults.length > 0
-          ? effResults.reduce((sum, r) => sum + r.fps_per_watt, 0) / effResults.length
-          : 0;
-
-        // Normalize to 0-100
-        const fpsScore = (avgFps / maxFps) * 100;
-        const efficiencyScore = maxEfficiency > 0 ? (avgEfficiency / maxEfficiency) * 100 : 0;
+        const perfScore = fpsPercentile[cpu] ?? 50;
+        const effScore = effPercentile[cpu] ?? 50;
 
         // Codec support score (based on architecture)
         const arch = results[0]?.architecture;
@@ -2261,7 +2278,7 @@ cd quicksync_calc
         }
 
         // Weighted average: 40% performance + 35% efficiency + 25% codec support
-        const score = Math.round(fpsScore * 0.4 + efficiencyScore * 0.35 + codecScore * 0.25);
+        const score = Math.round(perfScore * 0.4 + effScore * 0.35 + codecScore * 0.25);
         scores[cpu] = Math.min(100, Math.max(0, score));
       }
 
