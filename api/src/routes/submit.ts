@@ -88,6 +88,30 @@ submit.post('/', async (c) => {
           continue;
         }
 
+        // Validate power readings
+        if (result.avg_watts !== null && result.avg_watts !== undefined) {
+          if (result.avg_watts < 3.0) {
+            return c.json({
+              success: false,
+              error: 'Invalid power reading',
+              message: `Power reading of ${result.avg_watts}W is implausibly low (minimum: 3W). This usually indicates a measurement error. Please check intel_gpu_top output and file a GitHub issue if the problem persists.`,
+              github_issue_url: 'https://github.com/ironicbadger/quicksync_calc/issues/new',
+              measured_watts: result.avg_watts,
+              expected_range: '10-50W'
+            }, 400);
+          }
+
+          if (result.avg_watts > 200.0) {
+            return c.json({
+              success: false,
+              error: 'Invalid power reading',
+              message: `Power reading of ${result.avg_watts}W is implausibly high (maximum: 200W). Please verify your measurement.`,
+              measured_watts: result.avg_watts,
+              expected_range: '10-50W'
+            }, 400);
+          }
+        }
+
         const newResult: BenchmarkResult = {
           id: nextId++,
           submitted_at: new Date().toISOString(),

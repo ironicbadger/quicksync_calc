@@ -16,3 +16,6 @@ web/.env.local
 web/.env.production
 
 .playwright-mcp/
+
+benchmark_results.json
+benchmarks*.json

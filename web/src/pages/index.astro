@@ -769,6 +769,14 @@ cd quicksync_calc
     color: var(--color-accent);
     text-decoration: underline;
   }
+
+  /* Data quality warning indicator */
+  .quality-warning {
+    cursor: help;
+    color: #ff9800;
+    font-size: 1.2em;
+    margin-left: 0.25rem;
+  }
 </style>
 
 <script define:vars={{ API_URL, DATA_URL }}>
@@ -2028,9 +2036,19 @@ cd quicksync_calc
       for (const metric of metrics) {
         const boxplotData = [];
 
+        // For efficiency metric, exclude flagged results with bad power data
+        let metricFiltered = filtered;
+        if (metric === 'fps_per_watt') {
+          metricFiltered = filtered.filter(r =>
+            r.avg_watts !== null &&
+            r.avg_watts >= 3.0 &&
+            (!r.data_quality_flags || !r.data_quality_flags.includes('power_too_low'))
+          );
+        }
+
         // Group by generation
         const byGenAndTest = {};
-        for (const r of filtered) {
+        for (const r of metricFiltered) {
           let groupKey;
 
           // Determine group
@@ -2229,7 +2247,13 @@ cd quicksync_calc
         const avgFps = results.reduce((sum, r) => sum + r.avg_fps, 0) / results.length;
         cpuAvgFps.push({ cpu, fps: avgFps });
 
-        const effResults = results.filter(r => r.fps_per_watt !== null);
+        // Filter for validated efficiency results (exclude flagged data)
+        const effResults = results.filter(r =>
+          r.fps_per_watt !== null &&
+          r.avg_watts !== null &&
+          r.avg_watts >= 3.0 &&
+          (!r.data_quality_flags || !r.data_quality_flags.includes('power_too_low'))
+        );
         if (effResults.length > 0) {
           const avgEfficiency = effResults.reduce((sum, r) => sum + r.fps_per_watt, 0) / effResults.length;
           cpuAvgEfficiency.push({ cpu, eff: avgEfficiency });
@@ -2265,7 +2289,14 @@ cd quicksync_calc
 
       for (const [cpu, results] of Object.entries(byCpu)) {
         const perfScore = fpsPercentile[cpu] ?? 50;
-        const effScore = effPercentile[cpu] ?? 50;
+
+        // Check if this CPU has any flagged results
+        const hasFlaggedResults = results.some(r =>
+          r.data_quality_flags && r.data_quality_flags.length > 0
+        );
+
+        // If CPU has no valid efficiency data (all flagged), set effScore to 0
+        const effScore = effPercentile[cpu] ?? (hasFlaggedResults ? 0 : 50);
 
         // Codec support score (based on architecture)
         const arch = results[0]?.architecture;
@@ -2360,9 +2391,21 @@ cd quicksync_calc
       const score = cpuScores[r.cpu_raw];
       const scoreClass = score >= 70 ? 'score-high' : score >= 40 ? 'score-mid' : 'score-low';
 
+      // Generate data quality warning
+      let warningHtml = '';
+      if (r.data_quality_flags && r.data_quality_flags.length > 0) {
+        const messages = {
+          'power_too_low': 'Power reading < 3W (likely measurement error)',
+          'efficiency_outlier': 'Efficiency > 400 fps/W (outlier)',
+          'arrow_lake_power_issue': 'Arrow Lake: Known power measurement issue with intel_gpu_top'
+        };
+        const tooltip = r.data_quality_flags.map(f => messages[f] || f).join('; ');
+        warningHtml = ` <span class="quality-warning" title="${tooltip}">⚠️</span>`;
+      }
+
       return `
         <tr>
-          <td class="cpu-cell">${cpuHtml}</td>
+          <td class="cpu-cell">${cpuHtml}${warningHtml}</td>
           <td>${r.architecture || '-'}</td>
           <td><span class="test-badge ${testClass}">${r.test_name}</span></td>
           <td class="numeric">${r.avg_fps?.toFixed(1) || '-'}</td>

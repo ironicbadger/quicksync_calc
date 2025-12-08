@@ -315,6 +315,35 @@ benchmarks(){
       | wc -l
     )
     avg_watts=$(echo "scale=2; $total_watts / $total_count" | bc -l)
+
+    # Validate power reading
+    if [ "$(echo "$avg_watts < 3" | bc -l)" -eq 1 ]; then
+      echo ""
+      echo "======================================================="
+      echo "           ⚠️  WARNING: LOW POWER READING"
+      echo "======================================================="
+      echo ""
+      echo "Measured power: ${avg_watts}W"
+      echo "Expected range: 10-50W for typical encoding workloads"
+      echo ""
+      echo "This suggests a power measurement issue:"
+      echo "  - intel_gpu_top reporting incorrect power domain"
+      echo "  - Kernel driver bug (especially on newer CPUs)"
+      echo "  - GPU power monitoring not supported"
+      echo ""
+      echo "Please file an issue with the following details:"
+      echo "  https://github.com/ironicbadger/quicksync_calc/issues/new"
+      echo ""
+      echo "  CPU: $cpu_model"
+      echo "  Power reading: ${avg_watts}W"
+      echo "  intel_gpu_top: $(intel_gpu_top --version 2>&1 | head -1)"
+      echo "  Kernel: $(uname -r)"
+      echo ""
+      echo "Results will NOT be submitted to prevent data quality issues."
+      echo "======================================================="
+      echo ""
+      avg_watts="REJECTED"
+    fi
   else
     avg_watts="N/A"
   fi

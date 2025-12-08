@@ -38,6 +38,28 @@ def fetch_all_as_dicts(conn, query):
     return [dict(zip(columns, row)) for row in rows]
 
 
+def flag_data_quality(result):
+    """Add data quality flags to a benchmark result."""
+    flags = []
+
+    # Flag 1: Power too low (measurement error)
+    if result.get('avg_watts') is not None:
+        if result['avg_watts'] < 3.0:
+            flags.append('power_too_low')
+
+    # Flag 2: Efficiency outlier (derived from bad power or other issues)
+    if result.get('fps_per_watt') is not None:
+        if result['fps_per_watt'] > 400:  # Hard cap above highest legitimate (N150: 327.9 fps/W)
+            flags.append('efficiency_outlier')
+
+    # Flag 3: Arrow Lake architecture warning (known issue)
+    if result.get('architecture') == 'Arrow Lake':
+        flags.append('arrow_lake_power_issue')
+
+    result['data_quality_flags'] = flags if flags else None
+    return result
+
+
 def main():
     print("Connecting to Turso...")
     conn = get_connection()
@@ -68,6 +90,15 @@ def main():
         ORDER BY id
     """)
     print(f"  Found {len(concurrency)} concurrency results")
+
+    # Apply data quality flagging to benchmark results
+    print("Applying data quality flags...")
+    flagged_count = 0
+    for result in results:
+        flag_data_quality(result)
+        if result.get('data_quality_flags'):
+            flagged_count += 1
+    print(f"  Flagged {flagged_count} results with data quality issues")
 
     # Parse speeds_json for concurrency results
     for row in concurrency:

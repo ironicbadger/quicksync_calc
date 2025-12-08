@@ -104,6 +104,16 @@ import Layout from '../layouts/Layout.astro';
           standardized test files and codec configurations.
         </p>
       </div>
+
+      <div class="methodology-card">
+        <h3>Data Quality</h3>
+        <p>
+          Efficiency scores exclude results with power readings below 3W (likely measurement errors)
+          or efficiency above 400 fps/W (physically implausible). CPUs with excluded results are marked
+          with an asterisk (*). Arrow Lake CPUs currently have a known power measurement issue with
+          intel_gpu_top and are excluded from efficiency rankings until resolved.
+        </p>
+      </div>
     </div>
   </div>
 </Layout>
@@ -447,7 +457,13 @@ import Layout from '../layouts/Layout.astro';
 
     for (const [cpu, results] of Object.entries(byCpu)) {
       cpuAvgFps.push({ cpu, fps: avg(results.map(r => r.avg_fps)) });
-      const effResults = results.filter(r => r.fps_per_watt !== null);
+      // Filter for validated efficiency results (exclude flagged data)
+      const effResults = results.filter(r =>
+        r.fps_per_watt !== null &&
+        r.avg_watts !== null &&
+        r.avg_watts >= 3.0 &&  // Exclude implausible power readings
+        (!r.data_quality_flags || !r.data_quality_flags.includes('power_too_low'))
+      );
       if (effResults.length > 0) {
         cpuAvgEfficiency.push({ cpu, eff: avg(effResults.map(r => r.fps_per_watt)) });
       }
@@ -478,7 +494,14 @@ import Layout from '../layouts/Layout.astro';
     const scores = [];
     for (const [cpu, results] of Object.entries(byCpu)) {
       const perfScore = fpsPercentile[cpu] ?? 50;
-      const effScore = effPercentile[cpu] ?? 50;
+
+      // Check if this CPU has any flagged results
+      const hasFlaggedResults = results.some(r =>
+        r.data_quality_flags && r.data_quality_flags.length > 0
+      );
+
+      // If CPU has no valid efficiency data (all flagged), set effScore to 0
+      const effScore = effPercentile[cpu] ?? (hasFlaggedResults ? 0 : 50);
 
       const arch = results[0]?.architecture;
       const codecs = arch ? archCodecs[arch] : null;
@@ -496,6 +519,7 @@ import Layout from '../layouts/Layout.astro';
         architecture: results[0]?.architecture || null,
         cpu_generation: results[0]?.cpu_generation || null,
         score,
+        hasFlaggedResults,
       });
     }
 
@@ -565,11 +589,14 @@ import Layout from '../layouts/Layout.astro';
       const rankClass = rank <= 3 ? `rank-${rank}` : 'rank-other';
       const scoreClass = cpu.score >= 70 ? 'score-high' : cpu.score >= 40 ? 'score-mid' : 'score-low';
       const cpuHtml = renderCpuName(cpu.cpu_raw, cpu.architecture, cpu.cpu_generation);
+      const flaggedIndicator = cpu.hasFlaggedResults
+        ? ' <span title="Some results excluded from efficiency scoring due to data quality issues" style="cursor: help; color: #ff9800;">*</span>'
+        : '';
 
       return `
         <tr>
           <td><span class="rank-badge ${rankClass}">${rank}</span></td>
-          <td class="cpu-name">${cpuHtml}</td>
+          <td class="cpu-name">${cpuHtml}${flaggedIndicator}</td>
           <td>${cpu.architecture || '-'}</td>
           <td class="numeric"><span class="score-badge ${scoreClass}">${cpu.score}</span></td>
         </tr>
