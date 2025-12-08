@@ -233,7 +233,7 @@ start_container(){
   fi
 
   echo "Pulling Jellyfin container..."
-  docker pull jellyfin/jellyfin >/dev/null
+  docker pull docker.io/jellyfin/jellyfin >/dev/null
 
   while [ $attempt -le $max_attempts ]; do
     echo "Starting Jellyfin QSV test container (attempt $attempt/$max_attempts)..."
@@ -242,7 +242,7 @@ start_container(){
     docker rm -f jellyfin-qsvtest >/dev/null 2>&1 || true
 
     # Start container WITHOUT --rm so it persists between tests
-    if ! docker run -d --name jellyfin-qsvtest --device=/dev/dri:/dev/dri -v "$(pwd)":/config jellyfin/jellyfin >/dev/null 2>&1; then
+    if ! docker run -d --name jellyfin-qsvtest --device=/dev/dri:/dev/dri -v "$(pwd)":/config docker.io/jellyfin/jellyfin >/dev/null 2>&1; then
       echo "  Failed to start container"
       attempt=$((attempt + 1))
       continue
@@ -279,7 +279,7 @@ ensure_container_running(){
     echo "  Container stopped, restarting..."
     docker start jellyfin-qsvtest >/dev/null 2>&1 || {
       # Container was removed, recreate it
-      docker run -d --name jellyfin-qsvtest --device=/dev/dri:/dev/dri -v "$(pwd)":/config jellyfin/jellyfin >/dev/null 2>&1
+      docker run -d --name jellyfin-qsvtest --device=/dev/dri:/dev/dri -v "$(pwd)":/config docker.io/jellyfin/jellyfin >/dev/null 2>&1
     }
     sleep 3
   fi
