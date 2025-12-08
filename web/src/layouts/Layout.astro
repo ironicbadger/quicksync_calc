@@ -92,6 +92,32 @@ const { title } = Astro.props;
         font-family: inherit;
         font-size: 1rem;
       }
+
+      /* Score badges - used across multiple pages */
+      .score-badge {
+        display: inline-block;
+        padding: 0.125rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        min-width: 2rem;
+        text-align: center;
+      }
+
+      .score-badge.score-high {
+        background: rgba(34, 197, 94, 0.2);
+        color: #22c55e;
+      }
+
+      .score-badge.score-mid {
+        background: rgba(234, 179, 8, 0.2);
+        color: #eab308;
+      }
+
+      .score-badge.score-low {
+        background: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+      }
     </style>
   </head>
   <body>

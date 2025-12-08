@@ -5,7 +5,8 @@
  */
 
 import { Hono } from 'hono';
-import { getDb, Env } from '../lib/db';
+import { Env, readData, writeData, getNextId, hashExists, BenchmarkResult } from '../lib/r2';
+import { withLock } from '../lib/lock';
 import { parseResults } from '../lib/parser';
 
 const submit = new Hono<{ Bindings: Env }>();
@@ -14,6 +15,7 @@ interface SubmitRequest {
   submitter_id?: string;
   confirmed?: boolean;
   passphrase?: string;
+  results?: string;
 }
 
 submit.post('/', async (c) => {
@@ -34,7 +36,7 @@ submit.post('/', async (c) => {
 
   // Handle both plain text and JSON submissions
   if (contentType.includes('application/json')) {
-    const json = await c.req.json<SubmitRequest & { results: string }>();
+    const json = await c.req.json<SubmitRequest>();
     body = json.results || '';
     submitterId = json.submitter_id || null;
     confirmed = json.confirmed || false;
@@ -57,70 +59,81 @@ submit.post('/', async (c) => {
     return c.json({ success: false, error: 'No valid results found' }, 400);
   }
 
-  const db = getDb(c.env);
-
-  // If submitter_id provided, check for existing submissions (soft uniqueness)
-  if (submitterId && !confirmed) {
-    const existing = await db.execute({
-      sql: 'SELECT COUNT(*) as count FROM benchmark_results WHERE submitter_id = ?',
-      args: [submitterId],
-    });
-
-    const existingCount = (existing.rows[0]?.count as number) || 0;
-
-    if (existingCount > 0) {
-      return c.json({
-        success: false,
-        requires_confirmation: true,
-        existing_count: existingCount,
-        message: `ID '${submitterId}' has ${existingCount} existing submissions. Set confirmed=true to proceed.`,
-      }, 409);
-    }
-  }
-
-  // Insert results
+  // Insert results into R2 JSON with locking
   let inserted = 0;
   let skipped = 0;
 
-  for (const result of results) {
-    try {
-      await db.execute({
-        sql: `
-          INSERT INTO benchmark_results (
-            submitter_id, cpu_raw, cpu_brand, cpu_model, cpu_generation,
-            architecture, test_name, test_file, bitrate_kbps, time_seconds,
-            avg_fps, avg_speed, avg_watts, fps_per_watt, result_hash, vendor
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-        args: [
-          submitterId,
-          result.cpu_raw,
-          result.cpu_brand,
-          result.cpu_model,
-          result.cpu_generation,
-          result.architecture,
-          result.test_name,
-          result.test_file,
-          result.bitrate_kbps,
-          result.time_seconds,
-          result.avg_fps,
-          result.avg_speed,
-          result.avg_watts,
-          result.fps_per_watt,
-          result.result_hash,
-          result.vendor,
-        ],
-      });
-      inserted++;
-    } catch (e: unknown) {
-      const error = e as Error;
-      if (error.message?.includes('UNIQUE constraint')) {
-        skipped++;
-      } else {
-        console.error('Insert error:', error);
-        skipped++;
+  try {
+    await withLock(c.env.PENDING_SUBMISSIONS, async () => {
+      // Read current data
+      const data = await readData(c.env.DATA_BUCKET);
+
+      // If submitter_id provided, check for existing submissions (soft uniqueness)
+      if (submitterId && !confirmed) {
+        const existingCount = data.results.filter(r => r.submitter_id === submitterId).length;
+
+        if (existingCount > 0) {
+          throw new SubmitterExistsError(submitterId, existingCount);
+        }
       }
+
+      // Get next ID
+      let nextId = getNextId(data.results);
+
+      // Add each result
+      for (const result of results) {
+        // Skip duplicates
+        if (hashExists(data.results, result.result_hash)) {
+          skipped++;
+          continue;
+        }
+
+        const newResult: BenchmarkResult = {
+          id: nextId++,
+          submitted_at: new Date().toISOString(),
+          submitter_id: submitterId,
+          cpu_raw: result.cpu_raw,
+          cpu_brand: result.cpu_brand,
+          cpu_model: result.cpu_model,
+          cpu_generation: result.cpu_generation,
+          architecture: result.architecture,
+          test_name: result.test_name,
+          test_file: result.test_file,
+          bitrate_kbps: result.bitrate_kbps,
+          time_seconds: result.time_seconds,
+          avg_fps: result.avg_fps,
+          avg_speed: result.avg_speed,
+          avg_watts: result.avg_watts,
+          fps_per_watt: result.fps_per_watt,
+          result_hash: result.result_hash,
+          vendor: result.vendor,
+        };
+
+        data.results.push(newResult);
+        inserted++;
+      }
+
+      // Write back to R2 (with backup)
+      if (inserted > 0) {
+        await writeData(c.env.DATA_BUCKET, data);
+      }
+    });
+  } catch (e) {
+    if (e instanceof SubmitterExistsError) {
+      return c.json({
+        success: false,
+        requires_confirmation: true,
+        existing_count: e.existingCount,
+        message: `ID '${e.submitterId}' has ${e.existingCount} existing submissions. Set confirmed=true to proceed.`,
+      }, 409);
     }
+
+    const error = e as Error;
+    console.error('R2 write error:', error);
+    return c.json({
+      success: false,
+      error: error.message || 'Failed to save results. Please try again.',
+    }, 500);
   }
 
   return c.json({
@@ -131,5 +144,13 @@ submit.post('/', async (c) => {
     message: `Successfully processed ${results.length} results`,
   });
 });
+
+// Custom error for submitter ID conflict
+class SubmitterExistsError extends Error {
+  constructor(public submitterId: string, public existingCount: number) {
+    super(`Submitter ID ${submitterId} already exists`);
+    this.name = 'SubmitterExistsError';
+  }
+}
 
 export default submit;

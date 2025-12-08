@@ -3,11 +3,12 @@
  *
  * POST /api/submit/pending - Store results in KV, return token
  * GET /api/submit/pending/:token - Retrieve pending results for preview
- * POST /api/submit/pending/confirm - Validate Turnstile, commit to DB
+ * POST /api/submit/pending/confirm - Validate Turnstile, commit to R2
  */
 
 import { Hono } from 'hono';
-import { getDb, Env } from '../lib/db';
+import { Env, readData, writeData, getNextId, hashExists, BenchmarkResult } from '../lib/r2';
+import { withLock } from '../lib/lock';
 import { parseResults, ParsedResult } from '../lib/parser';
 import { isBlockedCPU } from '../lib/cpu-parser';
 
@@ -122,7 +123,7 @@ submitPending.get('/:token', async (c) => {
 
 /**
  * POST /api/submit/pending/confirm
- * Validate Turnstile CAPTCHA and commit results to database.
+ * Validate Turnstile CAPTCHA and commit results to R2 JSON file.
  */
 submitPending.post('/confirm', async (c) => {
   const contentType = c.req.header('Content-Type') || '';
@@ -169,9 +170,9 @@ submitPending.post('/confirm', async (c) => {
   }
 
   // Fetch pending submission from KV
-  const data = await c.env.PENDING_SUBMISSIONS.get(`${KV_PREFIX}${token}`);
+  const kvData = await c.env.PENDING_SUBMISSIONS.get(`${KV_PREFIX}${token}`);
 
-  if (!data) {
+  if (!kvData) {
     return c.json({
       success: false,
       error: 'Submission not found or expired. Please run the benchmark again.',
@@ -179,56 +180,69 @@ submitPending.post('/confirm', async (c) => {
     }, 404);
   }
 
-  const submission: PendingSubmission = JSON.parse(data);
+  const submission: PendingSubmission = JSON.parse(kvData);
   const results = submission.results;
 
   // Sanitize submitter_id (optional)
   const sanitizedSubmitterId = submitter_id?.trim() || null;
 
-  // Insert results into database
-  const db = getDb(c.env);
+  // Insert results into R2 JSON with locking
   let inserted = 0;
   let skipped = 0;
 
-  for (const result of results) {
-    try {
-      await db.execute({
-        sql: `
-          INSERT INTO benchmark_results (
-            submitter_id, cpu_raw, cpu_brand, cpu_model, cpu_generation,
-            architecture, test_name, test_file, bitrate_kbps, time_seconds,
-            avg_fps, avg_speed, avg_watts, fps_per_watt, result_hash, vendor
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-        args: [
-          sanitizedSubmitterId,
-          result.cpu_raw,
-          result.cpu_brand,
-          result.cpu_model,
-          result.cpu_generation,
-          result.architecture,
-          result.test_name,
-          result.test_file,
-          result.bitrate_kbps,
-          result.time_seconds,
-          result.avg_fps,
-          result.avg_speed,
-          result.avg_watts,
-          result.fps_per_watt,
-          result.result_hash,
-          result.vendor,
-        ],
-      });
-      inserted++;
-    } catch (e: unknown) {
-      const error = e as Error;
-      if (error.message?.includes('UNIQUE constraint')) {
-        skipped++;
-      } else {
-        console.error('Insert error:', error);
-        skipped++;
+  try {
+    await withLock(c.env.PENDING_SUBMISSIONS, async () => {
+      // Read current data
+      const data = await readData(c.env.DATA_BUCKET);
+
+      // Get next ID
+      let nextId = getNextId(data.results);
+
+      // Add each result
+      for (const result of results) {
+        // Skip duplicates
+        if (hashExists(data.results, result.result_hash)) {
+          skipped++;
+          continue;
+        }
+
+        const newResult: BenchmarkResult = {
+          id: nextId++,
+          submitted_at: new Date().toISOString(),
+          submitter_id: sanitizedSubmitterId,
+          cpu_raw: result.cpu_raw,
+          cpu_brand: result.cpu_brand,
+          cpu_model: result.cpu_model,
+          cpu_generation: result.cpu_generation,
+          architecture: result.architecture,
+          test_name: result.test_name,
+          test_file: result.test_file,
+          bitrate_kbps: result.bitrate_kbps,
+          time_seconds: result.time_seconds,
+          avg_fps: result.avg_fps,
+          avg_speed: result.avg_speed,
+          avg_watts: result.avg_watts,
+          fps_per_watt: result.fps_per_watt,
+          result_hash: result.result_hash,
+          vendor: result.vendor,
+        };
+
+        data.results.push(newResult);
+        inserted++;
       }
-    }
+
+      // Write back to R2 (with backup)
+      if (inserted > 0) {
+        await writeData(c.env.DATA_BUCKET, data);
+      }
+    });
+  } catch (e) {
+    const error = e as Error;
+    console.error('R2 write error:', error);
+    return c.json({
+      success: false,
+      error: error.message || 'Failed to save results. Please try again.',
+    }, 500);
   }
 
   // Delete from KV after successful insertion

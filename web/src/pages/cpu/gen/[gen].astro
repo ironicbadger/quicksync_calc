@@ -4,18 +4,13 @@
  * Dynamic route: /cpu/gen/8, /cpu/gen/12, /cpu/gen/ultra-1, etc.
  *
  * Uses getStaticPaths() for static site generation (SSG).
- * All valid generation pages are pre-rendered at build time.
+ * Data is loaded client-side from R2 JSON.
  */
 
 import Layout from '../../../layouts/Layout.astro';
-import TimelineSlider from '../../../components/generation/TimelineSlider.astro';
-import CodecMatrix from '../../../components/generation/CodecMatrix.astro';
-import ArchitectureCard from '../../../components/generation/ArchitectureCard.astro';
-import CpuModelTable from '../../../components/generation/CpuModelTable.astro';
 
 // Define all valid generations for static path generation
 export function getStaticPaths() {
-  // All supported CPU generations - numeric and named
   const generations = [
     '6', '7', '8', '9', '10', '11', '12', '13', '14',
     'ultra-1', 'ultra-2',
@@ -27,390 +22,186 @@ export function getStaticPaths() {
   }));
 }
 
-// Get the generation parameter from the URL
 const { gen } = Astro.params;
 
-// API base URL - use environment variable or default
-const API_BASE = import.meta.env.PUBLIC_API_URL || 'https://quicksync-api.ktz.me';
+// Generation display names for initial render
+const generationNames: Record<string, string> = {
+  '6': '6th Gen (Skylake)',
+  '7': '7th Gen (Kaby Lake)',
+  '8': '8th Gen (Coffee Lake)',
+  '9': '9th Gen (Coffee Lake Refresh)',
+  '10': '10th Gen (Comet Lake)',
+  '11': '11th Gen (Rocket/Tiger Lake)',
+  '12': '12th Gen (Alder Lake)',
+  '13': '13th Gen (Raptor Lake)',
+  '14': '14th Gen (Raptor Lake Refresh)',
+  'ultra-1': 'Intel Core Ultra Series 1',
+  'ultra-2': 'Intel Core Ultra Series 2',
+  'arc': 'Intel Arc GPUs',
+};
 
-// Fetch generation detail data and scores in parallel
-let generationData: any = null;
-let scoresData: Record<string, number> = {};
-let error: string | null = null;
+const displayName = generationNames[gen || ''] || `Generation ${gen}`;
+const pageTitle = `${displayName} - QuickSync Benchmarks`;
 
-try {
-  const [genResponse, scoresResponse] = await Promise.all([
-    fetch(`${API_BASE}/api/results/generation-detail?generation=${gen}`),
-    fetch(`${API_BASE}/api/scores/for-results`),
-  ]);
-
-  if (genResponse.ok) {
-    generationData = await genResponse.json();
-    if (!generationData.success) {
-      error = generationData.error || 'Failed to load generation data';
-    }
-  } else {
-    error = `API error: ${genResponse.status}`;
-  }
-
-  if (scoresResponse.ok) {
-    const scoresJson = await scoresResponse.json();
-    if (scoresJson.success) {
-      scoresData = scoresJson.scores;
-    }
-  }
-} catch (e) {
-  error = 'Failed to connect to API';
-}
-
-// Add scores to cpu_models data and sort by score (highest first)
-if (generationData?.cpu_models) {
-  generationData.cpu_models = generationData.cpu_models
-    .map((cpu: any) => ({
-      ...cpu,
-      score: scoresData[cpu.cpu_raw] ?? null,
-    }))
-    .sort((a: any, b: any) => {
-      // Sort by score descending, nulls last
-      if (a.score === null && b.score === null) return 0;
-      if (a.score === null) return 1;
-      if (b.score === null) return -1;
-      return b.score - a.score;
-    });
-}
-
-// Strip Intel branding helper
-function stripCpuBranding(cpu: string): string {
-  return cpu
-    .replace(/Intel\(R\)\s*/gi, '')
-    .replace(/Core\(TM\)\s*/gi, '')
-    .replace(/\s+CPU\s*@\s*[\d.]+GHz/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-// Determine the top CPU and why it wins (now sorted by score)
-function getWinnerExplanation(cpuModels: any[]) {
-  if (!cpuModels || cpuModels.length < 2) return null;
-
-  const winner = cpuModels[0];
-  const second = cpuModels[1];
-
-  if (!winner || !second) return null;
-
-  const parts = [];
-
-  // Score advantage (primary metric now)
-  if (winner.score && second.score) {
-    const scoreDiff = winner.score - second.score;
-    if (scoreDiff > 0) {
-      parts.push(`+${scoreDiff} points vs ${stripCpuBranding(second.cpu_raw)}`);
-    }
-  }
-
-  // Efficiency highlight
-  if (winner.fps_per_watt) {
-    parts.push(`${winner.fps_per_watt.toFixed(1)} FPS/W efficiency`);
-  }
-
-  // Overall score label
-  if (winner.score) {
-    const scoreLabel = winner.score >= 70 ? 'excellent' : winner.score >= 50 ? 'good' : 'moderate';
-    parts.push(`${scoreLabel} overall (${winner.score}/100)`);
-  }
-
-  return parts.length > 0 ? parts.join(' • ') : null;
-}
-
-const winnerExplanation = getWinnerExplanation(generationData?.cpu_models);
-const topCpu = generationData?.cpu_models?.[0];
-
-// Generate page title
-const pageTitle = generationData?.display_name
-  ? `${generationData.display_name} - QuickSync Benchmarks`
-  : `Generation ${gen} - QuickSync Benchmarks`;
-
-// Helper to format performance difference
-function formatDiff(diff: number | null): string {
-  if (diff === null) return 'N/A';
-  const sign = diff >= 0 ? '+' : '';
-  return `${sign}${diff}%`;
-}
-
-function getDiffClass(diff: number | null): string {
-  if (diff === null) return '';
-  if (diff > 0) return 'positive';
-  if (diff < 0) return 'negative';
-  return '';
-}
+// Timeline for navigation
+const allGens = ['6', '7', '8', '9', '10', '11', '12', '13', '14', 'ultra-1', 'ultra-2', 'arc'];
+const currentIdx = allGens.indexOf(gen || '');
+const prevGen = currentIdx > 0 ? allGens[currentIdx - 1] : null;
+const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null;
 ---
 
 <Layout title={pageTitle}>
   <div class="container">
-    {error ? (
-      <div class="error-state">
-        <h1>Generation Not Found</h1>
-        <p>{error}</p>
-        <a href="/" class="back-link">&larr; Back to Dashboard</a>
+    <!-- Header with navigation -->
+    <div class="page-header">
+      <div class="nav-arrows">
+        {prevGen ? (
+          <a href={`/cpu/gen/${prevGen}`} class="nav-prev">
+            &larr; {generationNames[prevGen]}
+          </a>
+        ) : <span class="nav-placeholder" />}
       </div>
-    ) : generationData ? (
-      <>
-        {/* Header with navigation */}
-        <div class="page-header">
-          <div class="nav-arrows">
-            {generationData.timeline.previous ? (
-              <a href={`/cpu/gen/${generationData.timeline.previous.identifier}`} class="nav-prev">
-                &larr; {generationData.timeline.previous.name}
-              </a>
-            ) : <span class="nav-placeholder" />}
+
+      <div class="header-center">
+        <h1 id="page-title">{displayName}</h1>
+        <span id="arch-subtitle" class="arch-subtitle"></span>
+      </div>
+
+      <div class="nav-arrows">
+        {nextGen ? (
+          <a href={`/cpu/gen/${nextGen}`} class="nav-next">
+            {generationNames[nextGen]} &rarr;
+          </a>
+        ) : <span class="nav-placeholder" />}
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <section class="timeline-section card">
+      <h2>Generation Timeline</h2>
+      <div class="timeline-slider" id="timeline-slider">
+        {allGens.map(g => (
+          <a
+            href={`/cpu/gen/${g}`}
+            class:list={['timeline-item', { active: g === gen }]}
+          >
+            {/^\d+$/.test(g) ? `${g}th` : g.replace('-', ' ').replace('ultra', 'Ultra ')}
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <!-- Loading state -->
+    <div id="loading-state" class="loading-state">
+      <p>Loading generation data...</p>
+    </div>
+
+    <!-- Error state -->
+    <div id="error-state" class="error-state" style="display: none;">
+      <h2>Failed to Load Data</h2>
+      <p id="error-message"></p>
+      <a href="/" class="back-link">&larr; Back to Dashboard</a>
+    </div>
+
+    <!-- Content (populated by JS) -->
+    <div id="content" style="display: none;">
+      <!-- TL;DR Section -->
+      <section class="tldr-section card">
+        <h2>TL;DR</h2>
+        <p class="tldr-text" id="tldr-text"></p>
+
+        <div class="tldr-stats" id="tldr-stats">
+          <div class="tldr-stats-grid">
+            <div class="tldr-stat-card">
+              <div class="tldr-stat-label">Avg FPS</div>
+              <div class="tldr-stat-value" id="stat-fps">—</div>
+              <div class="tldr-stat-diff" id="stat-fps-diff"></div>
+            </div>
+            <div class="tldr-stat-card">
+              <div class="tldr-stat-label">Efficiency</div>
+              <div class="tldr-stat-value" id="stat-efficiency">—</div>
+              <div class="tldr-stat-diff" id="stat-efficiency-diff"></div>
+            </div>
+            <div class="tldr-stat-card">
+              <div class="tldr-stat-label">Avg Power</div>
+              <div class="tldr-stat-value" id="stat-watts">—</div>
+            </div>
+            <div class="tldr-stat-card">
+              <div class="tldr-stat-label">Results</div>
+              <div class="tldr-stat-value" id="stat-results">—</div>
+              <div class="tldr-stat-sub" id="stat-cpus"></div>
+            </div>
           </div>
 
-          <div class="header-center">
-            <h1>{generationData.display_name}</h1>
-            {generationData.architecture.name && (
-              <span class="arch-subtitle">{generationData.architecture.name}</span>
-            )}
+          <!-- Charts -->
+          <div class="tldr-comparison-charts" id="charts-container">
+            <div class="tldr-chart-container">
+              <canvas id="gen-fps-chart"></canvas>
+            </div>
+            <div class="tldr-chart-container">
+              <canvas id="gen-watts-chart"></canvas>
+            </div>
+            <div class="tldr-chart-container">
+              <canvas id="gen-efficiency-chart"></canvas>
+            </div>
           </div>
 
-          <div class="nav-arrows">
-            {generationData.timeline.next ? (
-              <a href={`/cpu/gen/${generationData.timeline.next.identifier}`} class="nav-next">
-                {generationData.timeline.next.name} &rarr;
-              </a>
-            ) : <span class="nav-placeholder" />}
+          <div id="baseline-note" class="tldr-baseline-note" style="display: none;">
+            <span class="baseline-badge">Baseline</span>
+            8th Gen Coffee Lake is the reference baseline for all efficiency comparisons.
           </div>
         </div>
+      </section>
 
-        {/* Timeline */}
-        <section class="timeline-section card">
-          <h2>Generation Timeline</h2>
-          <TimelineSlider
-            generations={generationData.timeline.all_generations}
-            currentIdentifier={gen || ''}
-          />
-        </section>
+      <!-- Codec Support -->
+      <section class="card">
+        <h2>Codec Support</h2>
+        <div class="codec-matrix" id="codec-matrix"></div>
+      </section>
 
-        {/* TL;DR Summary with Stats and Charts */}
-        <section class="tldr-section card">
-          <h2>TL;DR</h2>
-          <p class="tldr-text">
-            <strong>{generationData.display_name}</strong>
-            {generationData.architecture.name && ` (${generationData.architecture.name})`}
-            {generationData.architecture.release_year && `, released ${generationData.architecture.release_year}`}.
-            {generationData.has_multiple_variants && generationData.architecture_variants?.length > 1 ? (
-              <>
-                {' '}Features multiple iGPU variants:{' '}
-                {generationData.architecture_variants.map((v: any, i: number) => (
-                  <><strong>{v.igpu_name}</strong> ({v.gpu_eu_count}){i < generationData.architecture_variants.length - 1 ? ' or ' : ''}</>
-                ))}.
-                <span class="variant-note"> iGPU varies by CPU model (i3/i5 non-K vs i5-K/i7/i9).</span>
-              </>
-            ) : generationData.architecture.igpu_name && (
-              <> Features <strong>{generationData.architecture.igpu_name}</strong> with {generationData.architecture.gpu_eu_count || 'integrated graphics'}.</>
-            )}
-            {' '}Supports
-            {generationData.codec_support.h264_encode && ' H.264'}
-            {generationData.codec_support.hevc_8bit_encode && ', HEVC 8-bit'}
-            {generationData.codec_support.hevc_10bit_encode && ', HEVC 10-bit'}
-            {generationData.codec_support.vp9_encode && ', VP9'}
-            {generationData.codec_support.av1_encode && ', AV1'}
-            {' '}hardware encoding.
-          </p>
+      <!-- Benchmark Data -->
+      <section class="benchmark-section card">
+        <h2>
+          Benchmark Data
+          <span class="data-count" id="data-count"></span>
+        </h2>
+        <div class="test-stats" id="test-stats">
+          <table>
+            <thead>
+              <tr>
+                <th>Test</th>
+                <th class="numeric">Avg FPS</th>
+                <th class="numeric">Min</th>
+                <th class="numeric">Max</th>
+                <th class="numeric">FPS/Watt</th>
+              </tr>
+            </thead>
+            <tbody id="test-stats-body"></tbody>
+          </table>
+        </div>
+      </section>
 
-          {/* Stats Grid with Baseline Comparison */}
-          {generationData.benchmark_stats.total_results > 0 && (
-            <div class="tldr-stats">
-              <div class="tldr-stats-grid">
-                <div class="tldr-stat-card">
-                  <div class="tldr-stat-label">Avg FPS</div>
-                  <div class="tldr-stat-value">{generationData.benchmark_stats.avg_fps?.toFixed(1) || '—'}</div>
-                  {gen !== '8' && generationData.baseline_comparison.fps_diff_percent !== null && (
-                    <div class:list={['tldr-stat-diff', getDiffClass(generationData.baseline_comparison.fps_diff_percent)]}>
-                      {formatDiff(generationData.baseline_comparison.fps_diff_percent)} vs 8th Gen
-                    </div>
-                  )}
-                </div>
-                <div class="tldr-stat-card">
-                  <div class="tldr-stat-label">Efficiency</div>
-                  <div class="tldr-stat-value">{generationData.benchmark_stats.fps_per_watt?.toFixed(2) || '—'}<span class="tldr-stat-unit"> FPS/W</span></div>
-                  {gen !== '8' && generationData.baseline_comparison.efficiency_diff_percent !== null && (
-                    <div class:list={['tldr-stat-diff', getDiffClass(generationData.baseline_comparison.efficiency_diff_percent)]}>
-                      {formatDiff(generationData.baseline_comparison.efficiency_diff_percent)} vs 8th Gen
-                    </div>
-                  )}
-                </div>
-                <div class="tldr-stat-card">
-                  <div class="tldr-stat-label">Avg Power</div>
-                  <div class="tldr-stat-value">{generationData.benchmark_stats.avg_watts?.toFixed(1) || '—'}<span class="tldr-stat-unit">W</span></div>
-                </div>
-                <div class="tldr-stat-card">
-                  <div class="tldr-stat-label">Results</div>
-                  <div class="tldr-stat-value">{generationData.benchmark_stats.total_results}</div>
-                  <div class="tldr-stat-sub">{generationData.benchmark_stats.unique_cpus} CPUs</div>
-                </div>
-              </div>
+      <!-- CPU Models -->
+      <section class="cpu-models-section card">
+        <h2>CPUs in This Generation</h2>
+        <div id="winner-callout" class="winner-callout" style="display: none;"></div>
+        <div class="cpu-grid" id="cpu-models-grid">
+          <div class="cpu-grid-header">CPU Model</div>
+          <div class="cpu-grid-header text-right">Score</div>
+          <div class="cpu-grid-header text-right">Avg FPS</div>
+          <div class="cpu-grid-header text-right">Avg Watts</div>
+          <div class="cpu-grid-header text-right">FPS/Watt</div>
+          <div class="cpu-grid-header text-right">Results</div>
+        </div>
+      </section>
 
-              {/* Comparison Bar Charts */}
-              {generationData.benchmark_stats.by_test?.length > 0 && (
-                <div class="tldr-comparison-charts">
-                  <div class="tldr-chart-container">
-                    <canvas id="gen-fps-chart"></canvas>
-                  </div>
-                  <div class="tldr-chart-container">
-                    <canvas id="gen-watts-chart"></canvas>
-                  </div>
-                  <div class="tldr-chart-container">
-                    <canvas id="gen-efficiency-chart"></canvas>
-                  </div>
-                </div>
-              )}
-
-              {/* 8th Gen is the baseline message */}
-              {gen === '8' && (
-                <div class="tldr-baseline-note">
-                  <span class="baseline-badge">Baseline</span>
-                  8th Gen Coffee Lake is the reference baseline for all efficiency comparisons.
-                </div>
-              )}
-            </div>
-          )}
-        </section>
-
-        {/* Architecture */}
-        <section class="card">
-          <h2>Architecture</h2>
-          <ArchitectureCard
-            architecture={generationData.architecture}
-            variants={generationData.architecture_variants}
-            hasMultipleVariants={generationData.has_multiple_variants}
-            cpuModels={generationData.cpu_models}
-          />
-        </section>
-
-        {/* Codec Support */}
-        <section class="card">
-          <h2>Codec Support</h2>
-          <CodecMatrix codecSupport={generationData.codec_support} />
-        </section>
-
-        {/* Benchmark Data */}
-        <section class="benchmark-section card">
-          <h2>
-            Benchmark Data
-            <span class="data-count">
-              {generationData.benchmark_stats.total_results} results from {generationData.benchmark_stats.unique_cpus} CPUs
-            </span>
-          </h2>
-
-          {generationData.benchmark_stats.total_results > 0 ? (
-            <>
-              {/* Stats by Test */}
-              <div class="test-stats">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Test</th>
-                      <th class="numeric">Avg FPS</th>
-                      <th class="numeric">Min</th>
-                      <th class="numeric">Max</th>
-                      <th class="numeric">FPS/Watt</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {generationData.benchmark_stats.by_test.map((test: any) => (
-                      <tr>
-                        <td>
-                          <span class:list={['test-badge', test.test_name.includes('hevc') ? 'hevc' : test.test_name.includes('cpu') ? 'cpu' : 'h264']}>
-                            {test.test_name}
-                          </span>
-                        </td>
-                        <td class="numeric">{test.avg_fps?.toFixed(1) || '—'}</td>
-                        <td class="numeric">{test.min_fps?.toFixed(1) || '—'}</td>
-                        <td class="numeric">{test.max_fps?.toFixed(1) || '—'}</td>
-                        <td class="numeric">{test.fps_per_watt?.toFixed(2) || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          ) : (
-            <p class="no-data">No benchmark data available for this generation yet. <a href="/about">Learn how to contribute</a>.</p>
-          )}
-        </section>
-
-        {/* CPU Models in this Generation */}
-        <section class="cpu-models-section card">
-          <h2>CPUs in This Generation</h2>
-
-          {/* Winner explanation */}
-          {topCpu && winnerExplanation && (
-            <div class="winner-callout">
-              <span class="winner-badge">Top Performer</span>
-              <span class="winner-name">{stripCpuBranding(topCpu.cpu_raw)}</span>
-              <span class="winner-reason">{winnerExplanation}</span>
-            </div>
-          )}
-
-          <CpuModelTable cpuModels={generationData.cpu_models} generationId={gen || ''} />
-        </section>
-
-        {/* Pricing Links - conditional based on generation type */}
-        {/^\d+$/.test(gen || '') ? (
-          <section class="pricing-section card">
-            <h2>Find This CPU</h2>
-            <p class="pricing-note">Search for {generationData.display_name} processors on popular marketplaces:</p>
-            <div class="pricing-links">
-              <a href={`https://www.ebay.com/sch/i.html?_nkw=intel+${gen}th+gen+cpu`} target="_blank" rel="noopener" class="pricing-link">
-                eBay
-              </a>
-              <a href={`https://www.amazon.com/s?k=intel+${gen}th+gen+processor`} target="_blank" rel="noopener" class="pricing-link">
-                Amazon
-              </a>
-              <a href={`https://www.newegg.com/p/pl?d=intel+${gen}th+gen`} target="_blank" rel="noopener" class="pricing-link">
-                Newegg
-              </a>
-            </div>
-          </section>
-        ) : gen === 'arc' ? (
-          <section class="pricing-section card">
-            <h2>Find Intel Arc GPUs</h2>
-            <p class="pricing-note">Search for Intel Arc discrete graphics cards:</p>
-            <div class="pricing-links">
-              <a href="https://www.ebay.com/sch/i.html?_nkw=intel+arc+gpu" target="_blank" rel="noopener" class="pricing-link">
-                eBay
-              </a>
-              <a href="https://www.amazon.com/s?k=intel+arc+graphics+card" target="_blank" rel="noopener" class="pricing-link">
-                Amazon
-              </a>
-              <a href="https://www.newegg.com/p/pl?d=intel+arc" target="_blank" rel="noopener" class="pricing-link">
-                Newegg
-              </a>
-            </div>
-          </section>
-        ) : gen?.startsWith('ultra') ? (
-          <section class="pricing-section card">
-            <h2>Find This CPU</h2>
-            <p class="pricing-note">Search for {generationData.display_name} processors on popular marketplaces:</p>
-            <div class="pricing-links">
-              <a href="https://www.ebay.com/sch/i.html?_nkw=intel+core+ultra+cpu" target="_blank" rel="noopener" class="pricing-link">
-                eBay
-              </a>
-              <a href="https://www.amazon.com/s?k=intel+core+ultra+processor" target="_blank" rel="noopener" class="pricing-link">
-                Amazon
-              </a>
-              <a href="https://www.newegg.com/p/pl?d=intel+core+ultra" target="_blank" rel="noopener" class="pricing-link">
-                Newegg
-              </a>
-            </div>
-          </section>
-        ) : null}
-      </>
-    ) : (
-      <div class="loading-state">
-        <p>Loading...</p>
-      </div>
-    )}
+      <!-- Pricing Links -->
+      <section class="pricing-section card" id="pricing-section">
+        <h2>Find This CPU</h2>
+        <p class="pricing-note" id="pricing-note"></p>
+        <div class="pricing-links" id="pricing-links"></div>
+      </section>
+    </div>
   </div>
 </Layout>
 
@@ -478,6 +269,35 @@ function getDiffClass(diff: number | null): string {
     width: 120px;
   }
 
+  /* Timeline Slider */
+  .timeline-slider {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding: 0.5rem 0;
+  }
+
+  .timeline-item {
+    padding: 0.5rem 1rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+
+  .timeline-item:hover {
+    border-color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  .timeline-item.active {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: white;
+  }
+
   /* Sections */
   section {
     margin-bottom: 1.5rem;
@@ -510,14 +330,6 @@ function getDiffClass(diff: number | null): string {
     line-height: 1.7;
     color: var(--color-text);
     margin-bottom: 1.25rem;
-  }
-
-  .variant-note {
-    display: block;
-    font-size: 0.875rem;
-    color: var(--color-text-muted);
-    font-style: italic;
-    margin-top: 0.25rem;
   }
 
   .tldr-stats {
@@ -586,7 +398,7 @@ function getDiffClass(diff: number | null): string {
     margin-top: 0.25rem;
   }
 
-  /* Comparison Bar Charts */
+  /* Charts */
   .tldr-comparison-charts {
     display: flex;
     flex-direction: column;
@@ -617,6 +429,7 @@ function getDiffClass(diff: number | null): string {
     border-radius: 0.5rem;
     font-size: 0.875rem;
     color: var(--color-text-muted);
+    margin-top: 1rem;
   }
 
   .baseline-badge {
@@ -631,19 +444,35 @@ function getDiffClass(diff: number | null): string {
     border-radius: 0.25rem;
   }
 
-  @media (max-width: 768px) {
-    .page-header {
-      grid-template-columns: 1fr;
-      text-align: center;
-    }
+  /* Codec Matrix */
+  .codec-matrix {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.75rem;
+  }
 
-    .nav-arrows {
-      justify-content: center !important;
-    }
+  .codec-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+  }
 
-    .nav-placeholder {
-      display: none;
-    }
+  .codec-item.supported {
+    border-color: #22c55e;
+    background: rgba(34, 197, 94, 0.1);
+  }
+
+  .codec-item.unsupported {
+    opacity: 0.5;
+  }
+
+  .codec-icon {
+    font-size: 1rem;
   }
 
   /* Test Stats Table */
@@ -695,62 +524,32 @@ function getDiffClass(diff: number | null): string {
   .test-badge.hevc { color: #3b82f6; }
   .test-badge.cpu { color: #f59e0b; }
 
-  .no-data {
+  /* CPU Models Grid */
+  .cpu-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr;
+    gap: 0;
+  }
+
+  .cpu-grid-header {
+    padding: 0.75rem;
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     color: var(--color-text-muted);
-    text-align: center;
-    padding: 2rem;
+    border-bottom: 2px solid var(--color-border);
   }
 
-  /* Pricing Links */
-  .pricing-note {
+  .cpu-grid-cell {
+    padding: 0.75rem;
     font-size: 0.875rem;
-    color: var(--color-text-muted);
-    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--color-border);
+    font-variant-numeric: tabular-nums;
   }
 
-  .pricing-links {
-    display: flex;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-  }
-
-  .pricing-link {
-    padding: 0.5rem 1rem;
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
-    transition: all 0.2s;
-  }
-
-  .pricing-link:hover {
-    border-color: var(--color-accent);
-    text-decoration: none;
-  }
-
-  /* States */
-  .error-state, .loading-state {
-    text-align: center;
-    padding: 4rem 2rem;
-  }
-
-  .error-state h1 {
-    font-size: 1.5rem;
-    margin-bottom: 1rem;
-  }
-
-  .back-link {
-    display: inline-block;
-    margin-top: 1rem;
-    padding: 0.5rem 1rem;
-    background: var(--color-accent);
-    color: white;
-    border-radius: 0.375rem;
-  }
-
-  .back-link:hover {
-    background: var(--color-accent-hover);
-    text-decoration: none;
+  .text-right {
+    text-align: right;
   }
 
   /* Winner Callout */
@@ -790,133 +589,511 @@ function getDiffClass(diff: number | null): string {
     flex: 1;
   }
 
-  @media (max-width: 600px) {
-    .winner-callout {
-      flex-direction: column;
-      align-items: flex-start;
+  /* Pricing Links */
+  .pricing-note {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    margin-bottom: 1rem;
+  }
+
+  .pricing-links {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .pricing-link {
+    padding: 0.5rem 1rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+  }
+
+  .pricing-link:hover {
+    border-color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  /* States */
+  .loading-state, .error-state {
+    text-align: center;
+    padding: 4rem 2rem;
+  }
+
+  .error-state h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .back-link {
+    display: inline-block;
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    background: var(--color-accent);
+    color: white;
+    border-radius: 0.375rem;
+  }
+
+  .back-link:hover {
+    background: var(--color-accent-hover);
+    text-decoration: none;
+  }
+
+  @media (max-width: 768px) {
+    .page-header {
+      grid-template-columns: 1fr;
+      text-align: center;
+    }
+
+    .nav-arrows {
+      justify-content: center !important;
+    }
+
+    .nav-placeholder {
+      display: none;
     }
   }
 </style>
 
-{generationData?.benchmark_stats?.by_test?.length > 0 && (
-<script define:vars={{
-  displayName: generationData.display_name,
-  byTest: generationData.benchmark_stats.by_test,
-  baselineByTest: generationData.baseline_by_test || [],
-  isBaseline: gen === '8'
-}}>
-  // Generation colors
-  const genColor = { bg: 'rgba(6, 182, 212, 0.7)', border: 'rgb(6, 182, 212)' };
-  const baselineColor = { bg: 'rgba(120, 120, 130, 0.6)', border: 'rgb(120, 120, 130)' };
+<script is:inline define:vars={{ gen }}>
+  const DATA_URL = 'https://pub-c66d7559b64a430ca682a4bd624f04d8.r2.dev/benchmarks.json';
 
-  // Build datasets for comparison charts
-  function buildDatasets(metric) {
-    const testNames = byTest.map(t => t.test_name);
+  // Generation info
+  const generationInfo = {
+    '6': { display_name: '6th Gen (Skylake)', architectures: ['Skylake'] },
+    '7': { display_name: '7th Gen (Kaby Lake)', architectures: ['Kaby Lake'] },
+    '8': { display_name: '8th Gen (Coffee Lake)', architectures: ['Coffee Lake', 'Coffee Lake Refresh'] },
+    '9': { display_name: '9th Gen (Coffee Lake Refresh)', architectures: ['Coffee Lake Refresh'] },
+    '10': { display_name: '10th Gen (Comet Lake)', architectures: ['Comet Lake', 'Ice Lake'] },
+    '11': { display_name: '11th Gen (Rocket/Tiger Lake)', architectures: ['Rocket Lake', 'Tiger Lake'] },
+    '12': { display_name: '12th Gen (Alder Lake)', architectures: ['Alder Lake', 'Alder Lake-N'] },
+    '13': { display_name: '13th Gen (Raptor Lake)', architectures: ['Raptor Lake'] },
+    '14': { display_name: '14th Gen (Raptor Lake Refresh)', architectures: ['Raptor Lake Refresh'] },
+    'ultra-1': { display_name: 'Intel Core Ultra Series 1', architectures: ['Meteor Lake', 'Lunar Lake'] },
+    'ultra-2': { display_name: 'Intel Core Ultra Series 2', architectures: ['Arrow Lake'] },
+    'arc': { display_name: 'Intel Arc GPUs', architectures: ['Alchemist', 'Battlemage', 'Arc Alchemist'] },
+  };
 
-    const datasets = [{
-      label: displayName,
-      data: testNames.map(testName => {
-        const test = byTest.find(t => t.test_name === testName);
-        return test?.[metric] || 0;
-      }),
-      backgroundColor: genColor.bg,
-      borderColor: genColor.border,
-      borderWidth: 1,
-    }];
+  function avg(values) {
+    if (values.length === 0) return 0;
+    return values.reduce((a, b) => a + b, 0) / values.length;
+  }
 
-    // Add baseline if not viewing 8th gen
-    if (!isBaseline && baselineByTest.length > 0) {
-      datasets.push({
-        label: '8th Gen (Baseline)',
-        data: testNames.map(testName => {
-          const test = baselineByTest.find(t => t.test_name === testName);
-          return test?.[metric] || 0;
-        }),
-        backgroundColor: baselineColor.bg,
-        borderColor: baselineColor.border,
+  function stripCpuBranding(cpu) {
+    return cpu
+      .replace(/Intel\(R\)\s*/gi, '')
+      .replace(/Core\(TM\)\s*/gi, '')
+      .replace(/\s+CPU\s*@\s*[\d.]+GHz/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  async function loadData() {
+    try {
+      const response = await fetch(DATA_URL);
+      if (!response.ok) throw new Error(`Failed to load data: ${response.status}`);
+      return await response.json();
+    } catch (e) {
+      throw new Error('Failed to load benchmark data');
+    }
+  }
+
+  function getGenerationDetail(data, genId) {
+    const info = generationInfo[genId];
+    if (!info) return { success: false, error: 'Unknown generation' };
+
+    const isNumericGen = /^\d+$/.test(genId);
+    const genResults = data.results.filter(r => {
+      if (isNumericGen) return r.cpu_generation === parseInt(genId);
+      if (genId === 'ultra-1') return r.architecture === 'Meteor Lake' || r.architecture === 'Lunar Lake';
+      if (genId === 'ultra-2') return r.architecture === 'Arrow Lake';
+      if (genId === 'arc') return r.architecture === 'Alchemist' || r.architecture === 'Battlemage' || r.architecture === 'Arc Alchemist';
+      return false;
+    });
+
+    const archData = data.architectures.find(a => info.architectures.includes(a.architecture));
+
+    const codecSupport = {
+      h264_encode: archData?.h264_encode ?? true,
+      hevc_8bit_encode: archData?.hevc_8bit_encode ?? false,
+      hevc_10bit_encode: archData?.hevc_10bit_encode ?? false,
+      vp9_encode: archData?.vp9_encode ?? false,
+      av1_encode: archData?.av1_encode ?? false,
+    };
+
+    const uniqueCpus = new Set(genResults.map(r => r.cpu_raw));
+    const avgFps = avg(genResults.map(r => r.avg_fps));
+    const avgWatts = avg(genResults.filter(r => r.avg_watts !== null).map(r => r.avg_watts));
+    const fpsPerWatt = avg(genResults.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt));
+
+    // Stats by test
+    const byTest = {};
+    for (const r of genResults) {
+      if (!byTest[r.test_name]) byTest[r.test_name] = [];
+      byTest[r.test_name].push(r);
+    }
+
+    const testStats = Object.entries(byTest).map(([test, results]) => ({
+      test_name: test,
+      count: results.length,
+      avg_fps: avg(results.map(r => r.avg_fps)),
+      min_fps: Math.min(...results.map(r => r.avg_fps)),
+      max_fps: Math.max(...results.map(r => r.avg_fps)),
+      avg_watts: avg(results.filter(r => r.avg_watts !== null).map(r => r.avg_watts)),
+      fps_per_watt: avg(results.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt)),
+    }));
+
+    // Baseline comparison (8th gen)
+    const baseline8 = data.results.filter(r => r.cpu_generation === 8);
+    const baselineFps = avg(baseline8.map(r => r.avg_fps));
+    const baselineEfficiency = avg(baseline8.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt));
+
+    const fpsDiff = baselineFps > 0 ? Math.round(((avgFps - baselineFps) / baselineFps) * 100) : null;
+    const effDiff = baselineEfficiency > 0 ? Math.round(((fpsPerWatt - baselineEfficiency) / baselineEfficiency) * 100) : null;
+
+    // Baseline by test
+    const baselineByTest = Object.keys(byTest).map(test => {
+      const baseResults = baseline8.filter(r => r.test_name === test);
+      return {
+        test_name: test,
+        avg_fps: avg(baseResults.map(r => r.avg_fps)),
+        avg_watts: avg(baseResults.filter(r => r.avg_watts !== null).map(r => r.avg_watts)),
+        fps_per_watt: avg(baseResults.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt)),
+      };
+    });
+
+    // CPU models with stats
+    const cpuStats = {};
+    for (const r of genResults) {
+      if (!cpuStats[r.cpu_raw]) cpuStats[r.cpu_raw] = [];
+      cpuStats[r.cpu_raw].push(r);
+    }
+
+    const cpuModels = Object.entries(cpuStats).map(([cpu, results]) => ({
+      cpu_raw: cpu,
+      result_count: results.length,
+      avg_fps: avg(results.map(r => r.avg_fps)),
+      avg_watts: avg(results.filter(r => r.avg_watts !== null).map(r => r.avg_watts)),
+      fps_per_watt: avg(results.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt)),
+    }));
+
+    return {
+      success: true,
+      display_name: info.display_name,
+      architecture: { name: archData?.architecture ?? info.architectures[0] },
+      codec_support: codecSupport,
+      benchmark_stats: {
+        total_results: genResults.length,
+        unique_cpus: uniqueCpus.size,
+        avg_fps: avgFps,
+        avg_watts: avgWatts,
+        fps_per_watt: fpsPerWatt,
+        by_test: testStats,
+      },
+      baseline_comparison: { fps_diff_percent: fpsDiff, efficiency_diff_percent: effDiff },
+      baseline_by_test: baselineByTest,
+      cpu_models: cpuModels,
+    };
+  }
+
+  function getCpuScores(data) {
+    const byCpu = {};
+    for (const r of data.results) {
+      if (!byCpu[r.cpu_raw]) byCpu[r.cpu_raw] = [];
+      byCpu[r.cpu_raw].push(r);
+    }
+
+    const cpuAvgFps = [];
+    const cpuAvgEfficiency = [];
+
+    for (const [cpu, results] of Object.entries(byCpu)) {
+      cpuAvgFps.push({ cpu, fps: avg(results.map(r => r.avg_fps)) });
+      const effResults = results.filter(r => r.fps_per_watt !== null);
+      if (effResults.length > 0) {
+        cpuAvgEfficiency.push({ cpu, eff: avg(effResults.map(r => r.fps_per_watt)) });
+      }
+    }
+
+    cpuAvgFps.sort((a, b) => a.fps - b.fps);
+    cpuAvgEfficiency.sort((a, b) => a.eff - b.eff);
+
+    const fpsPercentile = {};
+    cpuAvgFps.forEach((item, idx) => {
+      fpsPercentile[item.cpu] = Math.round((idx / (cpuAvgFps.length - 1)) * 100);
+    });
+
+    const effPercentile = {};
+    cpuAvgEfficiency.forEach((item, idx) => {
+      effPercentile[item.cpu] = Math.round((idx / (cpuAvgEfficiency.length - 1)) * 100);
+    });
+
+    const archCodecs = {};
+    for (const arch of data.architectures) {
+      archCodecs[arch.architecture] = {
+        av1: arch.av1_encode,
+        hevc10: arch.hevc_10bit_encode,
+        vp9: arch.vp9_encode,
+      };
+    }
+
+    const scores = {};
+    for (const [cpu, results] of Object.entries(byCpu)) {
+      const perfScore = fpsPercentile[cpu] ?? 50;
+      const effScore = effPercentile[cpu] ?? 50;
+
+      const arch = results[0]?.architecture;
+      const codecs = arch ? archCodecs[arch] : null;
+      let codecScore = 50;
+      if (codecs) {
+        if (codecs.av1) codecScore += 25;
+        if (codecs.hevc10) codecScore += 15;
+        if (codecs.vp9) codecScore += 10;
+      }
+
+      scores[cpu] = Math.min(100, Math.max(0, Math.round(perfScore * 0.4 + effScore * 0.35 + codecScore * 0.25)));
+    }
+
+    return scores;
+  }
+
+  function renderPage(genData, scores) {
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+
+    // Update header
+    document.getElementById('arch-subtitle').textContent = genData.architecture.name || '';
+
+    // TL;DR text
+    let tldrText = `<strong>${genData.display_name}</strong>`;
+    if (genData.architecture.name) tldrText += ` (${genData.architecture.name})`;
+    tldrText += '. Supports';
+    if (genData.codec_support.h264_encode) tldrText += ' H.264';
+    if (genData.codec_support.hevc_8bit_encode) tldrText += ', HEVC 8-bit';
+    if (genData.codec_support.hevc_10bit_encode) tldrText += ', HEVC 10-bit';
+    if (genData.codec_support.vp9_encode) tldrText += ', VP9';
+    if (genData.codec_support.av1_encode) tldrText += ', AV1';
+    tldrText += ' hardware encoding.';
+    document.getElementById('tldr-text').innerHTML = tldrText;
+
+    // Stats
+    const stats = genData.benchmark_stats;
+    document.getElementById('stat-fps').textContent = stats.avg_fps?.toFixed(1) || '—';
+    document.getElementById('stat-efficiency').innerHTML = (stats.fps_per_watt?.toFixed(2) || '—') + '<span class="tldr-stat-unit"> FPS/W</span>';
+    document.getElementById('stat-watts').innerHTML = (stats.avg_watts?.toFixed(1) || '—') + '<span class="tldr-stat-unit">W</span>';
+    document.getElementById('stat-results').textContent = stats.total_results;
+    document.getElementById('stat-cpus').textContent = stats.unique_cpus + ' CPUs';
+
+    // Baseline comparison
+    if (gen !== '8' && genData.baseline_comparison.fps_diff_percent !== null) {
+      const fpsDiff = genData.baseline_comparison.fps_diff_percent;
+      const fpsDiffEl = document.getElementById('stat-fps-diff');
+      fpsDiffEl.textContent = (fpsDiff >= 0 ? '+' : '') + fpsDiff + '% vs 8th Gen';
+      fpsDiffEl.className = 'tldr-stat-diff ' + (fpsDiff > 0 ? 'positive' : fpsDiff < 0 ? 'negative' : '');
+    }
+
+    if (gen !== '8' && genData.baseline_comparison.efficiency_diff_percent !== null) {
+      const effDiff = genData.baseline_comparison.efficiency_diff_percent;
+      const effDiffEl = document.getElementById('stat-efficiency-diff');
+      effDiffEl.textContent = (effDiff >= 0 ? '+' : '') + effDiff + '% vs 8th Gen';
+      effDiffEl.className = 'tldr-stat-diff ' + (effDiff > 0 ? 'positive' : effDiff < 0 ? 'negative' : '');
+    }
+
+    if (gen === '8') {
+      document.getElementById('baseline-note').style.display = 'flex';
+    }
+
+    // Codec matrix
+    const codecs = [
+      { key: 'h264_encode', name: 'H.264' },
+      { key: 'hevc_8bit_encode', name: 'HEVC 8-bit' },
+      { key: 'hevc_10bit_encode', name: 'HEVC 10-bit' },
+      { key: 'vp9_encode', name: 'VP9' },
+      { key: 'av1_encode', name: 'AV1' },
+    ];
+    document.getElementById('codec-matrix').innerHTML = codecs.map(c => {
+      const supported = genData.codec_support[c.key];
+      const bgColor = supported ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.1)';
+      const borderColor = supported ? '#22c55e' : '#ef4444';
+      const iconColor = supported ? '#22c55e' : '#ef4444';
+      const icon = supported ? '✓' : '✗';
+      return `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;background:${bgColor};border:1px solid ${borderColor};border-radius:0.375rem;font-size:0.875rem">
+        <span style="font-size:1.1rem;font-weight:bold;color:${iconColor}">${icon}</span>
+        <span>${c.name}</span>
+      </div>`;
+    }).join('');
+
+    // Test stats table
+    document.getElementById('data-count').textContent = `${stats.total_results} results from ${stats.unique_cpus} CPUs`;
+    document.getElementById('test-stats-body').innerHTML = stats.by_test.map(test => {
+      const badgeClass = test.test_name.includes('hevc') ? 'hevc' : test.test_name.includes('cpu') ? 'cpu' : 'h264';
+      return `<tr>
+        <td><span class="test-badge ${badgeClass}">${test.test_name}</span></td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums">${test.avg_fps?.toFixed(1) || '—'}</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums">${test.min_fps?.toFixed(1) || '—'}</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums">${test.max_fps?.toFixed(1) || '—'}</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums">${test.fps_per_watt?.toFixed(2) || '—'}</td>
+      </tr>`;
+    }).join('');
+
+    // CPU models with scores
+    const cpuModelsWithScores = genData.cpu_models.map(cpu => ({
+      ...cpu,
+      score: scores[cpu.cpu_raw] ?? null,
+    })).sort((a, b) => {
+      if (a.score === null && b.score === null) return 0;
+      if (a.score === null) return 1;
+      if (b.score === null) return -1;
+      return b.score - a.score;
+    });
+
+    // Winner callout
+    if (cpuModelsWithScores.length >= 2 && cpuModelsWithScores[0].score) {
+      const winner = cpuModelsWithScores[0];
+      const second = cpuModelsWithScores[1];
+      let reason = [];
+      if (winner.score && second.score && winner.score > second.score) {
+        reason.push(`+${winner.score - second.score} points vs ${stripCpuBranding(second.cpu_raw)}`);
+      }
+      if (winner.fps_per_watt) {
+        reason.push(`${winner.fps_per_watt.toFixed(1)} FPS/W efficiency`);
+      }
+      if (winner.score) {
+        const label = winner.score >= 70 ? 'excellent' : winner.score >= 50 ? 'good' : 'moderate';
+        reason.push(`${label} overall (${winner.score}/100)`);
+      }
+      document.getElementById('winner-callout').innerHTML = `
+        <span class="winner-badge">Top Performer</span>
+        <span class="winner-name">${stripCpuBranding(winner.cpu_raw)}</span>
+        <span class="winner-reason">${reason.join(' • ')}</span>
+      `;
+      document.getElementById('winner-callout').style.display = 'flex';
+    }
+
+    const gridHtml = cpuModelsWithScores.map(cpu => {
+      const scoreClass = cpu.score >= 70 ? 'score-high' : cpu.score >= 40 ? 'score-mid' : 'score-low';
+      const hasWattsData = cpu.avg_watts > 0;
+      return `
+        <div style="padding:0.75rem;font-size:0.875rem;border-bottom:1px solid var(--color-border)">${stripCpuBranding(cpu.cpu_raw)}</div>
+        <div style="padding:0.75rem;font-size:0.875rem;border-bottom:1px solid var(--color-border);text-align:right">${cpu.score !== null ? `<span class="score-badge ${scoreClass}">${cpu.score}</span>` : '—'}</div>
+        <div style="padding:0.75rem;font-size:0.875rem;border-bottom:1px solid var(--color-border);text-align:right;font-variant-numeric:tabular-nums">${cpu.avg_fps?.toFixed(1) || '—'}</div>
+        <div style="padding:0.75rem;font-size:0.875rem;border-bottom:1px solid var(--color-border);text-align:right;font-variant-numeric:tabular-nums">${hasWattsData ? cpu.avg_watts.toFixed(1) : '—'}</div>
+        <div style="padding:0.75rem;font-size:0.875rem;border-bottom:1px solid var(--color-border);text-align:right;font-variant-numeric:tabular-nums">${hasWattsData ? cpu.fps_per_watt?.toFixed(2) : '—'}</div>
+        <div style="padding:0.75rem;font-size:0.875rem;border-bottom:1px solid var(--color-border);text-align:right;font-variant-numeric:tabular-nums">${cpu.result_count}</div>`;
+    }).join('');
+    document.getElementById('cpu-models-grid').insertAdjacentHTML('beforeend', gridHtml);
+
+    // Pricing links
+    const isNumeric = /^\d+$/.test(gen);
+    if (isNumeric) {
+      document.getElementById('pricing-note').textContent = `Search for ${genData.display_name} processors on popular marketplaces:`;
+      document.getElementById('pricing-links').innerHTML = `
+        <a href="https://www.ebay.com/sch/i.html?_nkw=intel+${gen}th+gen+cpu" target="_blank" rel="noopener" class="pricing-link">eBay</a>
+        <a href="https://www.amazon.com/s?k=intel+${gen}th+gen+processor" target="_blank" rel="noopener" class="pricing-link">Amazon</a>
+        <a href="https://www.newegg.com/p/pl?d=intel+${gen}th+gen" target="_blank" rel="noopener" class="pricing-link">Newegg</a>
+      `;
+    } else if (gen === 'arc') {
+      document.getElementById('pricing-note').textContent = 'Search for Intel Arc discrete graphics cards:';
+      document.getElementById('pricing-links').innerHTML = `
+        <a href="https://www.ebay.com/sch/i.html?_nkw=intel+arc+gpu" target="_blank" rel="noopener" class="pricing-link">eBay</a>
+        <a href="https://www.amazon.com/s?k=intel+arc+graphics+card" target="_blank" rel="noopener" class="pricing-link">Amazon</a>
+        <a href="https://www.newegg.com/p/pl?d=intel+arc" target="_blank" rel="noopener" class="pricing-link">Newegg</a>
+      `;
+    } else {
+      document.getElementById('pricing-note').textContent = `Search for ${genData.display_name} processors on popular marketplaces:`;
+      document.getElementById('pricing-links').innerHTML = `
+        <a href="https://www.ebay.com/sch/i.html?_nkw=intel+core+ultra+cpu" target="_blank" rel="noopener" class="pricing-link">eBay</a>
+        <a href="https://www.amazon.com/s?k=intel+core+ultra+processor" target="_blank" rel="noopener" class="pricing-link">Amazon</a>
+        <a href="https://www.newegg.com/p/pl?d=intel+core+ultra" target="_blank" rel="noopener" class="pricing-link">Newegg</a>
+      `;
+    }
+
+    // Load Chart.js and render charts
+    if (stats.by_test?.length > 0) {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+      script.onload = () => renderCharts(genData);
+      document.head.appendChild(script);
+    }
+  }
+
+  function renderCharts(genData) {
+    const genColor = { bg: 'rgba(6, 182, 212, 0.7)', border: 'rgb(6, 182, 212)' };
+    const baselineColor = { bg: 'rgba(120, 120, 130, 0.6)', border: 'rgb(120, 120, 130)' };
+
+    const byTest = genData.benchmark_stats.by_test;
+    const baselineByTest = genData.baseline_by_test || [];
+    const isBaseline = gen === '8';
+
+    function buildDatasets(metric) {
+      const testNames = byTest.map(t => t.test_name);
+      const datasets = [{
+        label: genData.display_name,
+        data: testNames.map(name => byTest.find(t => t.test_name === name)?.[metric] || 0),
+        backgroundColor: genColor.bg,
+        borderColor: genColor.border,
         borderWidth: 1,
+      }];
+
+      if (!isBaseline && baselineByTest.length > 0) {
+        datasets.push({
+          label: '8th Gen (Baseline)',
+          data: testNames.map(name => baselineByTest.find(t => t.test_name === name)?.[metric] || 0),
+          backgroundColor: baselineColor.bg,
+          borderColor: baselineColor.border,
+          borderWidth: 1,
+        });
+      }
+
+      return datasets;
+    }
+
+    function createChart(canvasId, title, yLabel, metric) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+
+      new Chart(canvas, {
+        type: 'bar',
+        data: { labels: byTest.map(t => t.test_name), datasets: buildDatasets(metric) },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top', labels: { color: '#f1f5f9', font: { size: 11 } } },
+            title: { display: true, text: title, color: '#f1f5f9', font: { size: 13, weight: '600' } },
+          },
+          scales: {
+            x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#334155' } },
+            y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' }, title: { display: true, text: yLabel, color: '#94a3b8' } },
+          },
+        },
       });
     }
 
-    return datasets;
-  }
-
-  // Create comparison chart
-  function createChart(canvasId, title, yLabel, metric) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return null;
-
-    const testNames = byTest.map(t => t.test_name);
-
-    return new Chart(canvas, {
-      type: 'bar',
-      data: {
-        labels: testNames,
-        datasets: buildDatasets(metric),
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'top',
-            labels: { color: '#f1f5f9', font: { size: 11 } },
-          },
-          title: {
-            display: true,
-            text: title,
-            color: '#f1f5f9',
-            font: { size: 13, weight: '600' },
-          },
-          tooltip: {
-            callbacks: {
-              afterLabel: (context) => {
-                if (context.datasetIndex === 0 && !isBaseline && baselineByTest.length > 0) {
-                  const testName = testNames[context.dataIndex];
-                  const baselineTest = baselineByTest.find(t => t.test_name === testName);
-                  const baseVal = baselineTest?.[metric];
-                  if (baseVal && baseVal > 0) {
-                    const diff = metric === 'avg_watts'
-                      ? ((baseVal - context.raw) / baseVal * 100)
-                      : ((context.raw - baseVal) / baseVal * 100);
-                    return `${diff >= 0 ? '+' : ''}${diff.toFixed(0)}% vs 8th Gen`;
-                  }
-                }
-                return '';
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            ticks: { color: '#94a3b8', font: { size: 10 } },
-            grid: { color: '#334155' },
-          },
-          y: {
-            ticks: { color: '#94a3b8' },
-            grid: { color: '#334155' },
-            title: { display: true, text: yLabel, color: '#94a3b8' },
-          },
-        },
-      },
-    });
-  }
-
-  // Load Chart.js and create charts
-  function initCharts() {
     createChart('gen-fps-chart', 'Average FPS by Test Type', 'Frames per Second', 'avg_fps');
     createChart('gen-watts-chart', 'Average Power Usage by Test Type', 'Watts', 'avg_watts');
     createChart('gen-efficiency-chart', 'Efficiency (FPS per Watt) by Test Type', 'FPS/Watt', 'fps_per_watt');
   }
 
-  // Check if Chart.js is already loaded
-  if (typeof Chart !== 'undefined') {
-    initCharts();
-  } else {
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
-    script.onload = initCharts;
-    document.head.appendChild(script);
+  function showError(message) {
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('error-state').style.display = 'block';
+    document.getElementById('error-message').textContent = message;
   }
+
+  // Initialize
+  loadData()
+    .then(data => {
+      const genData = getGenerationDetail(data, gen);
+      if (!genData.success) {
+        showError(genData.error || 'Unknown generation');
+        return;
+      }
+      const scores = getCpuScores(data);
+      renderPage(genData, scores);
+    })
+    .catch(e => {
+      showError(e.message);
+    });
 </script>
-)}

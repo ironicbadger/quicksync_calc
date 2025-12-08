@@ -14,3 +14,5 @@ web/.astro/
 web/.env
 web/.env.local
 web/.env.production
+
+.playwright-mcp/
