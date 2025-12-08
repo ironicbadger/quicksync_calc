@@ -4,7 +4,7 @@
  */
 
 const LOCK_KEY = 'benchmarks-write-lock';
-const LOCK_TTL = 30; // seconds
+const LOCK_TTL = 60; // seconds (minimum allowed by Cloudflare KV)
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // ms
 
