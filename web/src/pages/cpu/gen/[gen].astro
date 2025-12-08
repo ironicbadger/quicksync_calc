@@ -726,7 +726,14 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
     const uniqueCpus = new Set(genResults.map(r => r.cpu_raw));
     const avgFps = avg(genResults.map(r => r.avg_fps));
     const avgWatts = avg(genResults.filter(r => r.avg_watts !== null).map(r => r.avg_watts));
-    const fpsPerWatt = avg(genResults.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt));
+    // For efficiency, exclude flagged results with bad power data
+    const validEfficiencyResults = genResults.filter(r =>
+      r.fps_per_watt !== null &&
+      r.avg_watts !== null &&
+      r.avg_watts >= 3.0 &&
+      (!r.data_quality_flags || !r.data_quality_flags.includes('power_too_low'))
+    );
+    const fpsPerWatt = avg(validEfficiencyResults.map(r => r.fps_per_watt));
 
     // Stats by test
     const byTest = {};
@@ -735,15 +742,23 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
       byTest[r.test_name].push(r);
     }
 
-    const testStats = Object.entries(byTest).map(([test, results]) => ({
-      test_name: test,
-      count: results.length,
-      avg_fps: avg(results.map(r => r.avg_fps)),
-      min_fps: Math.min(...results.map(r => r.avg_fps)),
-      max_fps: Math.max(...results.map(r => r.avg_fps)),
-      avg_watts: avg(results.filter(r => r.avg_watts !== null).map(r => r.avg_watts)),
-      fps_per_watt: avg(results.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt)),
-    }));
+    const testStats = Object.entries(byTest).map(([test, results]) => {
+      const validEff = results.filter(r =>
+        r.fps_per_watt !== null &&
+        r.avg_watts !== null &&
+        r.avg_watts >= 3.0 &&
+        (!r.data_quality_flags || !r.data_quality_flags.includes('power_too_low'))
+      );
+      return {
+        test_name: test,
+        count: results.length,
+        avg_fps: avg(results.map(r => r.avg_fps)),
+        min_fps: Math.min(...results.map(r => r.avg_fps)),
+        max_fps: Math.max(...results.map(r => r.avg_fps)),
+        avg_watts: avg(results.filter(r => r.avg_watts !== null).map(r => r.avg_watts)),
+        fps_per_watt: avg(validEff.map(r => r.fps_per_watt)),
+      };
+    });
 
     // Baseline comparison (8th gen)
     const baseline8 = data.results.filter(r => r.cpu_generation === 8);
@@ -771,13 +786,25 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
       cpuStats[r.cpu_raw].push(r);
     }
 
-    const cpuModels = Object.entries(cpuStats).map(([cpu, results]) => ({
-      cpu_raw: cpu,
-      result_count: results.length,
-      avg_fps: avg(results.map(r => r.avg_fps)),
-      avg_watts: avg(results.filter(r => r.avg_watts !== null).map(r => r.avg_watts)),
-      fps_per_watt: avg(results.filter(r => r.fps_per_watt !== null).map(r => r.fps_per_watt)),
-    }));
+    const cpuModels = Object.entries(cpuStats).map(([cpu, results]) => {
+      const validEff = results.filter(r =>
+        r.fps_per_watt !== null &&
+        r.avg_watts !== null &&
+        r.avg_watts >= 3.0 &&
+        (!r.data_quality_flags || !r.data_quality_flags.includes('power_too_low'))
+      );
+      const hasFlaggedResults = results.some(r =>
+        r.data_quality_flags && r.data_quality_flags.length > 0
+      );
+      return {
+        cpu_raw: cpu,
+        result_count: results.length,
+        avg_fps: avg(results.map(r => r.avg_fps)),
+        avg_watts: avg(results.filter(r => r.avg_watts !== null).map(r => r.avg_watts)),
+        fps_per_watt: avg(validEff.map(r => r.fps_per_watt)),
+        has_flagged: hasFlaggedResults,
+      };
+    });
 
     return {
       success: true,
@@ -810,7 +837,13 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
 
     for (const [cpu, results] of Object.entries(byCpu)) {
       cpuAvgFps.push({ cpu, fps: avg(results.map(r => r.avg_fps)) });
-      const effResults = results.filter(r => r.fps_per_watt !== null);
+      // Filter for validated efficiency results (exclude flagged data)
+      const effResults = results.filter(r =>
+        r.fps_per_watt !== null &&
+        r.avg_watts !== null &&
+        r.avg_watts >= 3.0 &&
+        (!r.data_quality_flags || !r.data_quality_flags.includes('power_too_low'))
+      );
       if (effResults.length > 0) {
         cpuAvgEfficiency.push({ cpu, eff: avg(effResults.map(r => r.fps_per_watt)) });
       }
@@ -841,7 +874,14 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
     const scores = {};
     for (const [cpu, results] of Object.entries(byCpu)) {
       const perfScore = fpsPercentile[cpu] ?? 50;
-      const effScore = effPercentile[cpu] ?? 50;
+
+      // Check if this CPU has any flagged results
+      const hasFlaggedResults = results.some(r =>
+        r.data_quality_flags && r.data_quality_flags.length > 0
+      );
+
+      // If CPU has no valid efficiency data (all flagged), set effScore to 0
+      const effScore = effPercentile[cpu] ?? (hasFlaggedResults ? 0 : 50);
 
       const arch = results[0]?.architecture;
       const codecs = arch ? archCodecs[arch] : null;
@@ -974,8 +1014,9 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
     const gridHtml = cpuModelsWithScores.map(cpu => {
       const scoreClass = cpu.score >= 70 ? 'score-high' : cpu.score >= 40 ? 'score-mid' : 'score-low';
       const hasWattsData = cpu.avg_watts > 0;
+      const warningIcon = cpu.has_flagged ? ` <span class="quality-warning" title="Some results excluded from efficiency scoring due to data quality issues" style="cursor:help;color:#ff9800">⚠️</span>` : '';
       return `
-        <div style="padding:0.75rem;font-size:0.875rem;border-bottom:1px solid var(--color-border)">${stripCpuBranding(cpu.cpu_raw)}</div>
+        <div style="padding:0.75rem;font-size:0.875rem;border-bottom:1px solid var(--color-border)">${stripCpuBranding(cpu.cpu_raw)}${warningIcon}</div>
         <div style="padding:0.75rem;font-size:0.875rem;border-bottom:1px solid var(--color-border);text-align:right">${cpu.score !== null ? `<span class="score-badge ${scoreClass}">${cpu.score}</span>` : '—'}</div>
         <div style="padding:0.75rem;font-size:0.875rem;border-bottom:1px solid var(--color-border);text-align:right;font-variant-numeric:tabular-nums">${cpu.avg_fps?.toFixed(1) || '—'}</div>
         <div style="padding:0.75rem;font-size:0.875rem;border-bottom:1px solid var(--color-border);text-align:right;font-variant-numeric:tabular-nums">${hasWattsData ? cpu.avg_watts.toFixed(1) : '—'}</div>
