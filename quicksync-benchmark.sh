@@ -356,14 +356,24 @@ benchmarks(){
     #Calculate average FPS
     total_fps=$(grep -Eo 'fps=.[1-9][1-9].' $i | sed -e 's/fps=//' | awk '{sum += $1} END {print sum}')
     fps_count=$(grep -Eo 'fps=.[1-9][1-9].' $i | wc -l)
-    avg_fps=$(awk "BEGIN {printf \"%.2f\", $total_fps / $fps_count}")
+    # Handle division by zero if no FPS data collected
+    if [ -z "$total_fps" ] || [ -z "$fps_count" ] || [ "$fps_count" -eq 0 ]; then
+      avg_fps="0.00"
+    else
+      avg_fps=$(awk "BEGIN {printf \"%.2f\", $total_fps / $fps_count}")
+    fi
 
     #Calculate average speed
     total_speed=$(grep -Eo 'speed=[0-9]+(\.[0-9]+)?x' "$i" \
       | sed -E 's/speed=([0-9.]+)x/\1/' \
       | awk '{sum += $1} END {print sum}')
     speed_count=$(grep -Eo 'speed=[0-9]+(\.[0-9]+)?x' "$i" | wc -l)
-    avg_speed="$(awk "BEGIN {printf \"%.2f\", $total_speed / $speed_count}")x"
+    # Handle division by zero if no speed data collected
+    if [ -z "$total_speed" ] || [ -z "$speed_count" ] || [ "$speed_count" -eq 0 ]; then
+      avg_speed="0.00x"
+    else
+      avg_speed="$(awk "BEGIN {printf \"%.2f\", $total_speed / $speed_count}")x"
+    fi
 
     #Get Bitrate of file
     bitrate=$(grep -Eo 'bitrate: [1-9].*' $i | sed -e 's/bitrate: //')
