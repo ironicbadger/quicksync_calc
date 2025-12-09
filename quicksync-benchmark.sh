@@ -343,7 +343,8 @@ benchmarks(){
       echo "  intel_gpu_top: $(intel_gpu_top -h 2>&1 | head -1 || echo 'version check failed')"
       echo "  Kernel: $(uname -r)"
       echo ""
-      echo "Results will NOT be submitted to prevent data quality issues."
+      echo "Results will be submitted but flagged for data quality issues."
+      echo "Performance metrics (FPS, speed) remain valid and useful."
       echo "======================================================="
       echo ""
       avg_watts="REJECTED"
@@ -456,23 +457,9 @@ main(){
   printf '%s\n' "${quicksyncstats_arr[@]}" | column -t -s '|'
   printf "\n"
 
-  # Check if any results were rejected due to power issues
-  local has_rejected=0
-  for line in "${quicksyncstats_arr[@]}"; do
-    if echo "$line" | grep -q "REJECTED"; then
-      has_rejected=1
-      break
-    fi
-  done
-
   # Upload results for web verification (default behavior)
-  # Skip if power readings were rejected
-  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ] && [ "$has_rejected" -eq 0 ]; then
+  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
     upload_for_verification
-  elif [ "$has_rejected" -eq 1 ]; then
-    echo "Skipping upload due to rejected power readings."
-    echo "Set QUICKSYNC_NO_SUBMIT=1 to suppress this message."
-    echo ""
   fi
 
   #Unset Array
