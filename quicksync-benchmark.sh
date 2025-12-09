@@ -313,7 +313,12 @@ benchmarks(){
       | grep -Ev '^(0(\.0+)?|Power|gpu)$' \
       | wc -l
     )
-    avg_watts=$(awk "BEGIN {printf \"%.2f\", $total_watts / $total_count}")
+    # Handle division by zero if no power data collected
+    if [ -z "$total_watts" ] || [ -z "$total_count" ] || [ "$total_count" -eq 0 ]; then
+      avg_watts="0.00"
+    else
+      avg_watts=$(awk "BEGIN {printf \"%.2f\", $total_watts / $total_count}")
+    fi
 
     # Validate power reading
     if [ "$(awk "BEGIN {print ($avg_watts < 3)}")" -eq 1 ]; then
@@ -335,7 +340,7 @@ benchmarks(){
       echo ""
       echo "  CPU: $cpu_model"
       echo "  Power reading: ${avg_watts}W"
-      echo "  intel_gpu_top: $(intel_gpu_top --version 2>&1 | head -1)"
+      echo "  intel_gpu_top: $(intel_gpu_top -h 2>&1 | head -1 || echo 'version check failed')"
       echo "  Kernel: $(uname -r)"
       echo ""
       echo "Results will NOT be submitted to prevent data quality issues."
@@ -441,9 +446,23 @@ main(){
   printf '%s\n' "${quicksyncstats_arr[@]}" | column -t -s '|'
   printf "\n"
 
+  # Check if any results were rejected due to power issues
+  local has_rejected=0
+  for line in "${quicksyncstats_arr[@]}"; do
+    if echo "$line" | grep -q "REJECTED"; then
+      has_rejected=1
+      break
+    fi
+  done
+
   # Upload results for web verification (default behavior)
-  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
+  # Skip if power readings were rejected
+  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ] && [ "$has_rejected" -eq 0 ]; then
     upload_for_verification
+  elif [ "$has_rejected" -eq 1 ]; then
+    echo "Skipping upload due to rejected power readings."
+    echo "Set QUICKSYNC_NO_SUBMIT=1 to suppress this message."
+    echo ""
   fi
 
   #Unset Array
