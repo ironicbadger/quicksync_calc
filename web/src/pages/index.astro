@@ -783,6 +783,17 @@ cd quicksync_calc
   // Global benchmark data (loaded once from R2)
   let benchmarkData = null;
 
+  // HTML escape function to prevent XSS
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   // Helper function to format ordinal numbers (1st, 2nd, 3rd, 4th, etc.)
   function ordinal(n) {
     const s = ['th', 'st', 'nd', 'rd'];
@@ -1158,13 +1169,17 @@ cd quicksync_calc
       return;
     }
 
-    submitterList.innerHTML = submitterEntries.map(([submitter, count]) => `
-      <label class="checkbox-item" data-value="${submitter}">
-        <input type="checkbox" value="${submitter}" data-filter="submitter" ${state.filters.submitter.includes(submitter) ? 'checked' : ''} />
-        <span title="${submitter}">${submitter.length > 20 ? submitter.slice(0, 20) + '...' : submitter}</span>
-        <span class="count">(${count})</span>
-      </label>
-    `).join('');
+    submitterList.innerHTML = submitterEntries.map(([submitter, count]) => {
+      const escaped = escapeHtml(submitter);
+      const displayText = submitter.length > 20 ? submitter.slice(0, 20) + '...' : submitter;
+      return `
+        <label class="checkbox-item" data-value="${escaped}">
+          <input type="checkbox" value="${escaped}" data-filter="submitter" ${state.filters.submitter.includes(submitter) ? 'checked' : ''} />
+          <span title="${escaped}">${escapeHtml(displayText)}</span>
+          <span class="count">(${count})</span>
+        </label>
+      `;
+    }).join('');
 
     // Re-attach handlers
     submitterList.querySelectorAll('[data-filter]').forEach(cb => {
@@ -1208,10 +1223,12 @@ cd quicksync_calc
   function renderCpuName(cpuRaw, architecture, generation) {
     const displayName = stripIntelBranding(cpuRaw);
     const link = getCpuLink(cpuRaw, architecture, generation);
+    const escapedCpu = escapeHtml(cpuRaw);
+    const escapedDisplay = escapeHtml(displayName);
     if (link) {
-      return `<a href="${link}" class="cpu-link" title="${cpuRaw}">${displayName}</a>`;
+      return `<a href="${link}" class="cpu-link" title="${escapedCpu}">${escapedDisplay}</a>`;
     }
-    return `<span title="${cpuRaw}">${displayName}</span>`;
+    return `<span title="${escapedCpu}">${escapedDisplay}</span>`;
   }
 
   // Render CPU list (filtered by search and with counts)
@@ -1238,10 +1255,13 @@ cd quicksync_calc
 
     cpuList.innerHTML = cpuEntries.map(([cpu, count]) => {
       const displayName = stripIntelBranding(cpu);
+      const displayText = displayName.length > 22 ? displayName.slice(0, 22) + '...' : displayName;
+      const escapedCpu = escapeHtml(cpu);
+      const escapedDisplay = escapeHtml(displayText);
       return `
-        <label class="checkbox-item" data-value="${cpu}">
-          <input type="checkbox" value="${cpu}" data-filter="cpu" ${state.filters.cpu.includes(cpu) ? 'checked' : ''} />
-          <span title="${cpu}">${displayName.length > 22 ? displayName.slice(0, 22) + '...' : displayName}</span>
+        <label class="checkbox-item" data-value="${escapedCpu}">
+          <input type="checkbox" value="${escapedCpu}" data-filter="cpu" ${state.filters.cpu.includes(cpu) ? 'checked' : ''} />
+          <span title="${escapedCpu}">${escapedDisplay}</span>
           <span class="count">(${count})</span>
         </label>
       `;
@@ -2400,14 +2420,14 @@ cd quicksync_calc
           'arrow_lake_power_issue': 'Arrow Lake: Known power measurement issue with intel_gpu_top'
         };
         const tooltip = r.data_quality_flags.map(f => messages[f] || f).join('; ');
-        warningHtml = ` <span class="quality-warning" title="${tooltip}">⚠️</span>`;
+        warningHtml = ` <span class="quality-warning" title="${escapeHtml(tooltip)}">⚠️</span>`;
       }
 
       return `
         <tr>
           <td class="cpu-cell">${cpuHtml}${warningHtml}</td>
-          <td>${r.architecture || '-'}</td>
-          <td><span class="test-badge ${testClass}">${r.test_name}</span></td>
+          <td>${escapeHtml(r.architecture) || '-'}</td>
+          <td><span class="test-badge ${testClass}">${escapeHtml(r.test_name)}</span></td>
           <td class="numeric">${r.avg_fps?.toFixed(1) || '-'}</td>
           <td class="numeric">${r.avg_watts?.toFixed(1) || '-'}</td>
           <td class="numeric">${r.fps_per_watt?.toFixed(2) || '-'}</td>

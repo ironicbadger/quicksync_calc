@@ -11,6 +11,7 @@ import { Env, readData, writeData, getNextId, hashExists, BenchmarkResult } from
 import { withLock } from '../lib/lock';
 import { parseResults, ParsedResult } from '../lib/parser';
 import { isBlockedCPU } from '../lib/cpu-parser';
+import { validateSubmitterId, normalizeSubmitterId } from '../lib/sanitize';
 
 const submitPending = new Hono<{ Bindings: Env }>();
 
@@ -146,6 +147,12 @@ submitPending.post('/confirm', async (c) => {
     return c.json({ success: false, error: 'Turnstile verification required' }, 400);
   }
 
+  // Validate submitter ID
+  const validationError = validateSubmitterId(submitter_id);
+  if (validationError) {
+    return c.json({ success: false, error: validationError }, 400);
+  }
+
   // Validate Turnstile token
   const turnstileResponse = await fetch(
     'https://challenges.cloudflare.com/turnstile/v0/siteverify',
@@ -183,8 +190,8 @@ submitPending.post('/confirm', async (c) => {
   const submission: PendingSubmission = JSON.parse(kvData);
   const results = submission.results;
 
-  // Sanitize submitter_id (optional)
-  const sanitizedSubmitterId = submitter_id?.trim() || null;
+  // Normalize submitter_id (already validated above)
+  const sanitizedSubmitterId = normalizeSubmitterId(submitter_id);
 
   // Insert results into R2 JSON with locking
   let inserted = 0;
