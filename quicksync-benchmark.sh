@@ -124,8 +124,8 @@ dep_check(){
     exit 127
   fi
 
-  if ! which bc >/dev/null; then
-    echo "bc missing. Please install bc"
+  if ! which awk >/dev/null; then
+    echo "awk missing. Please install awk"
     exit 127
   fi
 
@@ -143,9 +143,9 @@ BASE_URL="https://ssh.us-east-1.linodeobjects.com"
 format_size(){
   local bytes=$1
   if [ $bytes -ge 1073741824 ]; then
-    echo "$(echo "scale=1; $bytes / 1073741824" | bc)GB"
+    echo "$(awk "BEGIN {printf \"%.1f\", $bytes / 1073741824}")GB"
   elif [ $bytes -ge 1048576 ]; then
-    echo "$(echo "scale=0; $bytes / 1048576" | bc)MB"
+    echo "$(awk "BEGIN {printf \"%.0f\", $bytes / 1048576}")MB"
   else
     echo "${bytes}B"
   fi
@@ -305,8 +305,7 @@ benchmarks(){
       awk '{ print $5 }' $1.output \
       | grep -E '^[0-9.]+$' \
       | grep -Ev '^(0(\.0+)?|Power|gpu)$' \
-      | paste -s -d+ - \
-      | bc
+      | awk '{sum += $1} END {print sum}'
     )
     total_count=$(
       awk '{ print $5 }' $1.output \
@@ -314,10 +313,10 @@ benchmarks(){
       | grep -Ev '^(0(\.0+)?|Power|gpu)$' \
       | wc -l
     )
-    avg_watts=$(echo "scale=2; $total_watts / $total_count" | bc -l)
+    avg_watts=$(awk "BEGIN {printf \"%.2f\", $total_watts / $total_count}")
 
     # Validate power reading
-    if [ "$(echo "$avg_watts < 3" | bc -l)" -eq 1 ]; then
+    if [ "$(awk "BEGIN {print ($avg_watts < 3)}")" -eq 1 ]; then
       echo ""
       echo "======================================================="
       echo "           ⚠️  WARNING: LOW POWER READING"
@@ -350,17 +349,16 @@ benchmarks(){
 
   for i in $(ls ffmpeg-*.log); do
     #Calculate average FPS
-    total_fps=$(grep -Eo 'fps=.[1-9][1-9].' $i | sed -e 's/fps=//' | paste -s -d + - | bc)
+    total_fps=$(grep -Eo 'fps=.[1-9][1-9].' $i | sed -e 's/fps=//' | awk '{sum += $1} END {print sum}')
     fps_count=$(grep -Eo 'fps=.[1-9][1-9].' $i | wc -l)
-    avg_fps=$(echo "scale=2; $total_fps / $fps_count" | bc -l)
+    avg_fps=$(awk "BEGIN {printf \"%.2f\", $total_fps / $fps_count}")
 
     #Calculate average speed
     total_speed=$(grep -Eo 'speed=[0-9]+(\.[0-9]+)?x' "$i" \
       | sed -E 's/speed=([0-9.]+)x/\1/' \
-      | paste -s -d+ - \
-      | bc)
+      | awk '{sum += $1} END {print sum}')
     speed_count=$(grep -Eo 'speed=[0-9]+(\.[0-9]+)?x' "$i" | wc -l)
-    avg_speed="$(echo "scale=2; $total_speed / $speed_count" | bc -l)x"
+    avg_speed="$(awk "BEGIN {printf \"%.2f\", $total_speed / $speed_count}")x"
 
     #Get Bitrate of file
     bitrate=$(grep -Eo 'bitrate: [1-9].*' $i | sed -e 's/bitrate: //')

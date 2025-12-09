@@ -24,7 +24,7 @@ The website provides:
 - Intel CPU with Quick Sync support
 - `intel-gpu-tools` package (for power measurement)
 - `jq` (for JSON parsing)
-- `bc` (for calculations)
+- `awk` (for calculations - typically pre-installed)
 
 Designed for Linux. Tested on Proxmox 9 and Ubuntu 24.04 LTS.
 
@@ -47,7 +47,7 @@ Full instructions available at [blog.ktz.me](https://blog.ktz.me/i-need-your-hel
 ssh user@hostname
 
 # Install dependencies (tested on Proxmox 8 + Ubuntu 22.04)
-apt install docker.io jq bc intel-gpu-tools git curl
+apt install docker.io jq intel-gpu-tools git curl
 
 # Clone the repository
 git clone https://github.com/ironicbadger/quicksync_calc.git
