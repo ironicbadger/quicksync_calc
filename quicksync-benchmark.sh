@@ -355,8 +355,8 @@ benchmarks(){
 
   for i in $(ls ffmpeg-*.log); do
     #Calculate average FPS
-    total_fps=$(grep -Eo 'fps=[0-9]+(\.[0-9]+)?' $i | sed -e 's/fps=//' | awk '{sum += $1} END {print sum}')
-    fps_count=$(grep -Eo 'fps=[0-9]+(\.[0-9]+)?' $i | wc -l)
+    total_fps=$(grep -Eo 'fps= ?[0-9]+(\.[0-9]+)?' $i | sed -e 's/fps=//' | awk '{sum += $1} END {print sum}')
+    fps_count=$(grep -Eo 'fps= ?[0-9]+(\.[0-9]+)?' $i | wc -l)
     # Handle division by zero if no FPS data collected
     if [ -z "$total_fps" ] || [ -z "$fps_count" ] || [ "$fps_count" -eq 0 ]; then
       avg_fps="0.00"
