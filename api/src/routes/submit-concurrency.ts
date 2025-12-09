@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { Env, readData, writeData, ConcurrencyResult } from '../lib/r2';
 import { withLock } from '../lib/lock';
 import { parseConcurrencyResults } from '../lib/parser';
+import { validateSubmitterId, normalizeSubmitterId } from '../lib/sanitize';
 
 const submitConcurrency = new Hono<{ Bindings: Env }>();
 
@@ -31,6 +32,15 @@ submitConcurrency.post('/', async (c) => {
   if (!body.trim()) {
     return c.json({ success: false, error: 'Empty request body' }, 400);
   }
+
+  // Validate submitter ID
+  const validationError = validateSubmitterId(submitterId);
+  if (validationError) {
+    return c.json({ success: false, error: validationError }, 400);
+  }
+
+  // Normalize submitter ID (trim, collapse spaces)
+  submitterId = normalizeSubmitterId(submitterId);
 
   const results = parseConcurrencyResults(body);
 
