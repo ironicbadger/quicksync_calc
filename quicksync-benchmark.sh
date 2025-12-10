@@ -724,17 +724,17 @@ main(){
   printf '%s\n' "${quicksyncstats_arr[@]}" | column -t -s '|'
   printf "\n"
 
-  # Upload results for web verification (default behavior)
-  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
-    upload_for_verification
-  fi
-
   #Unset Array
   unset quicksyncstats_arr
 
   # Run concurrency tests if --concurrency flag was passed
   if [ "$RUN_CONCURRENCY" -eq 1 ]; then
     run_concurrency_tests
+  fi
+
+  # Upload results for web verification (default behavior)
+  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
+    upload_for_verification
   fi
 
   stop_container
