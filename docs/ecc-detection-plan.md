@@ -137,7 +137,7 @@ For CPUs where runtime detection was inconclusive, use web scraping to fill gaps
 #### Implementation
 
 Enhance `scripts/scrape-ecc-data.py` to:
-1. Query Turso DB for CPUs missing ECC data
+1. Query R2 JSON for CPUs missing ECC data
 2. Try TechPowerUp first (faster, covers AMD)
 3. Fall back to Intel ARK for failures
 4. Output SQL for `seed-ecc-data.sql`

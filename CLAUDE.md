@@ -4,28 +4,9 @@
 
 PRs should be created against `ironicbadger/quicksync_calc` (NOT `cptmorgan-rh`).
 
-## Secrets
-
-Turso database credentials are stored in sops. Use `sops` to decrypt and access them.
-
 ## Python
 
 Use `uv` for Python dependency management. Use `uv run --with <package>` to run Python scripts with dependencies without installing them globally.
-
-### Turso Database Access
-
-To query Turso database:
-```bash
-eval $(sops -d secrets.enc.yaml | sed 's/: /=/g' | sed 's/^/export /g')
-TURSO_URL="$turso_url" TURSO_AUTH_TOKEN="$turso_auth_token" \
-uv run --with libsql-experimental python3 -c "
-import libsql_experimental as libsql
-import os
-conn = libsql.connect(os.environ['TURSO_URL'], auth_token=os.environ['TURSO_AUTH_TOKEN'])
-result = conn.execute('SELECT * FROM benchmark_results LIMIT 5')
-print(result.fetchall())
-"
-```
 
 ## Project Overview
 
@@ -77,10 +58,8 @@ flowchart TB
         F[GET /api/stats]
     end
 
-    subgraph Database["Turso Database"]
-        G[(benchmark_results)]
-        H[(concurrency_results)]
-        I[(cpu_architectures)]
+    subgraph Storage["Cloudflare R2"]
+        G[(benchmarks.json)]
     end
 
     subgraph Website["Astro Static Site"]
@@ -97,7 +76,7 @@ flowchart TB
     A -->|curl POST| C
     B -->|curl POST| D
     C --> G
-    D --> H
+    D --> G
     E --> G
     F --> G
 
@@ -107,51 +86,27 @@ flowchart TB
     L --> E
 
     N --> M --> G
-
-    I -.->|CPU lookup| G
-    I -.->|CPU lookup| H
 ```
 
 ## Technology Stack
 
 | Component | Technology | Why |
 |-----------|------------|-----|
-| Database | [Turso](https://turso.tech) | Free tier, SQLite-based, edge-ready, global replication |
-| API | Cloudflare Workers | Free tier, global edge, native Turso support |
+| Storage | Cloudflare R2 | Free tier, global edge, simple JSON storage |
+| API | Cloudflare Workers | Free tier, global edge, native R2 support |
 | Frontend | Astro + Chart.js | Static-first, interactive charts, simple |
 | Hosting | Cloudflare Pages | Free, global CDN, custom domain support |
 
-### Database: Turso Cloud
+### Storage: Cloudflare R2
 
-Using [Turso](https://turso.tech) (hosted libSQL):
+Using Cloudflare R2 with a single JSON file (`benchmarks.json`):
 
-**Free tier includes:**
-- 500 databases
-- 9 GB storage
-- 1 billion row reads/month
-- 25 million row writes/month
-
-**Why Turso:**
+**Why R2:**
 - Zero infrastructure to manage
-- Global edge replication
-- SQLite compatibility (easy local dev)
-- Simple REST API for curl submissions
-
-**Self-hosted fallback:** If limits are ever hit, can migrate to self-hosted libSQL by:
-1. Export: `turso db shell <db> .dump > backup.sql`
-2. Run libSQL Docker container
-3. Import and change connection URL
-
-```yaml
-# Self-hosted option (if ever needed)
-services:
-  libsql:
-    image: ghcr.io/tursodatabase/libsql-server:latest
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./data/libsql:/var/lib/sqld
-```
+- Global edge distribution
+- Simple JSON file format (easy to backup/restore)
+- Versioned backups on each write
+- No query language needed - just read/write JSON
 
 ## Data Flow
 
@@ -160,7 +115,7 @@ sequenceDiagram
     participant User
     participant Script as benchmark.sh
     participant API as Cloudflare Worker
-    participant DB as Turso Database
+    participant R2 as R2 Storage
     participant Web as Website
 
     User->>Script: Run benchmark
@@ -173,8 +128,8 @@ sequenceDiagram
         API->>API: Extract CPU architecture
         API->>API: Compute fps_per_watt
         API->>API: Generate result_hash
-        API->>DB: INSERT (deduplicated)
-        DB-->>API: Success
+        API->>R2: Read/Write JSON (deduplicated)
+        R2-->>API: Success
         API-->>Script: {inserted: 5}
     else Manual
         Script->>User: Display results table
@@ -183,72 +138,31 @@ sequenceDiagram
 
     User->>Web: Visit quicksync.ktz.me
     Web->>API: GET /api/results?filters
-    API->>DB: SELECT with filters
-    DB-->>API: Results
+    API->>R2: Read JSON
+    R2-->>API: Results
     API-->>Web: JSON response
     Web->>Web: Render interactive charts
 ```
 
-## Database Schema
+## Data Schema
 
-```mermaid
-erDiagram
-    benchmark_results {
-        int id PK
-        text submitted_at
-        text submitter_id
-        text cpu_raw
-        text cpu_brand
-        text cpu_model
-        int cpu_generation
-        text architecture
-        text test_name
-        text test_file
-        int bitrate_kbps
-        real time_seconds
-        real avg_fps
-        real avg_speed
-        real avg_watts
-        real fps_per_watt
-        text result_hash UK
-        text vendor
-    }
+The `benchmarks.json` file stored in R2 contains all data in a single JSON structure:
 
-    concurrency_results {
-        int id PK
-        text submitted_at
-        text submitter_id
-        text cpu_raw
-        text cpu_brand
-        text cpu_model
-        int cpu_generation
-        text architecture
-        text test_name
-        text test_file
-        text speeds_json
-        int max_concurrency
-        text result_hash UK
-        text vendor
-    }
-
-    cpu_architectures {
-        int id PK
-        text pattern UK
-        text architecture
-        text codename
-        int release_year
-        int release_quarter
-        int sort_order
-        bool h264_encode
-        bool hevc_8bit_encode
-        bool hevc_10bit_encode
-        bool vp9_encode
-        bool av1_encode
-        text vendor
-    }
-
-    benchmark_results ||--o{ cpu_architectures : "matches pattern"
-    concurrency_results ||--o{ cpu_architectures : "matches pattern"
+```typescript
+interface BenchmarkData {
+  version: number;
+  lastUpdated: string;
+  meta: {
+    totalResults: number;
+    uniqueCpus: number;
+    architecturesCount: number;
+    uniqueTests: number;
+  };
+  architectures: CpuArchitecture[];
+  results: BenchmarkResult[];
+  concurrencyResults: ConcurrencyResult[];
+  cpuFeatures: Record<string, CpuFeatures>;
+}
 ```
 
 ## Intel CPU Architecture Timeline
@@ -327,7 +241,7 @@ quicksync_calc/
 │       │   ├── results.ts            # GET /api/results
 │       │   └── stats.ts              # GET /api/stats
 │       └── lib/
-│           ├── db.ts                 # Turso client
+│           ├── r2.ts                 # R2 storage helpers
 │           ├── parser.ts             # Parse pipe-delimited
 │           ├── cpu-parser.ts         # Extract CPU info
 │           └── validation.ts         # Input validation
@@ -364,40 +278,15 @@ quicksync_calc/
 └── README.md                         # Update docs
 ```
 
-## Implementation Phases
+## Implementation Status
 
-### Phase 1: Database Setup
-1. Create Turso account and database
-2. Run schema creation SQL
-3. Seed `cpu_architectures` table
-4. Create migration script for existing gist data
-
-### Phase 2: API Development
-1. Initialize Cloudflare Worker project
-2. Implement `POST /api/submit` endpoint
-3. Implement `POST /api/submit-concurrency` endpoint
-4. Implement `GET /api/results` with filtering
-5. Implement `GET /api/stats` for chart aggregations
-6. Add rate limiting
-
-### Phase 3: Web Frontend
-1. Initialize Astro project
-2. Build filter controls (generation, test type, power, performance)
-3. Create interactive boxplot charts
-4. Create concurrency heatmap visualization
-5. Build sortable results table
-
-### Phase 4: Integration
-1. Add `--submit` flag to `quicksync-benchmark.sh`
-2. Merge and update PR #10 concurrency script
-3. Update `analysis.py` to read from database
-4. Update README with new workflow
-
-### Phase 5: Deployment
-1. Create GitHub Actions workflow for deployment
-2. Configure Cloudflare Pages
-3. Set up custom domain: `quicksync.ktz.me`
-4. Add GitHub secrets for Turso credentials
+### Completed
+- ✅ Cloudflare R2 storage for benchmark data
+- ✅ Cloudflare Worker API with submit/results endpoints
+- ✅ Astro static site with interactive charts
+- ✅ CPU generation pages with architecture details
+- ✅ Concurrency benchmark support
+- ✅ Cloudflare Pages deployment
 
 ## API Endpoints
 
@@ -516,18 +405,14 @@ flowchart TB
     F --> G
 ```
 
-Schema preparation:
-```sql
-ALTER TABLE benchmark_results ADD COLUMN vendor TEXT DEFAULT 'intel';
-ALTER TABLE cpu_architectures ADD COLUMN vendor TEXT DEFAULT 'intel';
-```
+The `vendor` field in the JSON schema supports this future expansion.
 
 ## User Decisions
 
 | Decision | Choice |
 |----------|--------|
 | Domain | `quicksync.ktz.me` |
-| Database | Turso cloud (with self-hosted libSQL fallback) |
+| Storage | Cloudflare R2 (JSON file) |
 | Authentication | Optional user ID + rate limiting (no OAuth) |
 | Gist | Leave untouched |
 | Charts | Boxplots + rich filtering |
@@ -584,14 +469,11 @@ API checks for existing submissions with same ID:
 - Prevents accidental ID collision
 - No enforcement - user can proceed anyway
 
-```sql
--- Schema includes optional submitter_id
-submitter_id TEXT,  -- User-provided, optional, no verification
-```
+The `submitter_id` field in the JSON schema is user-provided, optional, and not verified.
 
 ### Rate Limiting
 
-- IP addresses used **transiently** for rate limiting (not stored in database)
+- IP addresses used **transiently** for rate limiting (not stored)
 - Limit: 10 submissions per IP per hour
 - No IP logging in results table
 
@@ -609,6 +491,6 @@ submitter_id TEXT,  -- User-provided, optional, no verification
 - [Intel Quick Sync Video - Wikipedia](https://en.wikipedia.org/wiki/Intel_Quick_Sync_Video)
 - [Intel Media Capabilities](https://www.intel.com/content/www/us/en/docs/onevpl/developer-reference-media-intel-hardware/1-1/overview.html)
 - [Intel Core Ultra Naming](https://www.intel.com/content/www/us/en/support/articles/000097596/processors/intel-core-ultra-processors.html)
-- [Turso Documentation](https://docs.turso.tech/)
+- [Cloudflare R2](https://developers.cloudflare.com/r2/)
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/)
 - [Astro Documentation](https://docs.astro.build/)
