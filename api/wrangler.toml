@@ -24,7 +24,7 @@ routes = [
 binding = "PENDING_SUBMISSIONS"
 id = "a55f255136bd456c8d257f12add2c807"
 
-# R2 bucket for benchmark data (replaces Turso database)
+# R2 bucket for benchmark data
 [[r2_buckets]]
 binding = "DATA_BUCKET"
 bucket_name = "quicksync-data"
@@ -32,7 +32,6 @@ bucket_name = "quicksync-data"
 # Secrets (set via wrangler secret put):
 # - TURNSTILE_SECRET   - Cloudflare Turnstile secret key for CAPTCHA validation
 # - ADMIN_PASSPHRASE   - Required for direct /api/submit access (bypasses web verification)
-# Note: TURSO_URL and TURSO_AUTH_TOKEN no longer needed (migrated to R2)
 
 # Observability
 [observability]

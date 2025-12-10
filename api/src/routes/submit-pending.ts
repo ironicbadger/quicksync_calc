@@ -41,7 +41,7 @@ submitPending.post('/', async (c) => {
   }
 
   // Parse results using existing parser
-  const results = parseResults(body);
+  const results = await parseResults(body);
 
   if (results.length === 0) {
     return c.json({ success: false, error: 'No valid results found' }, 400);

@@ -10,19 +10,25 @@
 #
 # Flags:
 #   --skip-warnings        - Skip the GPU process warning prompt
+#   --concurrency          - Run concurrency tests (how many simultaneous streams)
 #
 
 # Parse command line arguments
 SKIP_WARNINGS=0
+RUN_CONCURRENCY=0
 while [[ $# -gt 0 ]]; do
   case $1 in
     --skip-warnings)
       SKIP_WARNINGS=1
       shift
       ;;
+    --concurrency)
+      RUN_CONCURRENCY=1
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--skip-warnings]"
+      echo "Usage: $0 [--skip-warnings] [--concurrency]"
       exit 1
       ;;
   esac
@@ -404,6 +410,238 @@ run_benchmark(){
   printf "       Done!\n"
 }
 
+# ============================================================
+# Codec Detection (for experimental VP9/AV1 tests)
+# ============================================================
+
+# Check if a QSV encoder is available
+# Usage: check_qsv_encoder encoder_name
+# Returns: 0 if available, 1 if not
+check_qsv_encoder(){
+  local encoder=$1
+
+  # Try to initialize the encoder with a quick test
+  # This uses ffmpeg's -f lavfi input to avoid needing a file
+  docker exec jellyfin-qsvtest /usr/lib/jellyfin-ffmpeg/ffmpeg \
+    -hide_banner -v quiet \
+    -f lavfi -i "nullsrc=s=64x64:d=0.1" \
+    -c:v "$encoder" \
+    -frames:v 1 \
+    -f null - 2>/dev/null
+
+  return $?
+}
+
+# Detect available QSV codecs
+detect_qsv_codecs(){
+  echo "Detecting available QSV encoders..."
+
+  VP9_SUPPORTED=0
+  AV1_SUPPORTED=0
+
+  if check_qsv_encoder "vp9_qsv"; then
+    VP9_SUPPORTED=1
+    echo "  VP9 QSV: supported"
+  else
+    echo "  VP9 QSV: not available"
+  fi
+
+  if check_qsv_encoder "av1_qsv"; then
+    AV1_SUPPORTED=1
+    echo "  AV1 QSV: supported"
+  else
+    echo "  AV1 QSV: not available"
+  fi
+
+  echo ""
+}
+
+# ============================================================
+# Concurrency Testing
+# ============================================================
+
+# Run N concurrent encodes and measure average speed
+# Usage: run_concurrent_test test_id concurrency
+# Returns: average speed across all streams (or 0 if failed)
+run_concurrent_test(){
+  local test_id=$1
+  local concurrency=$2
+  local tmpdir=$(mktemp -d)
+  local pids=()
+
+  # Ensure container is running
+  ensure_container_running
+
+  # Clean up any old log files
+  rm -f ffmpeg-*.log 2>/dev/null
+
+  # Start N concurrent encodes in background
+  for i in $(seq 1 $concurrency); do
+    docker exec jellyfin-qsvtest /config/benchmark.sh "$test_id" 2>/dev/null &
+    pids+=($!)
+  done
+
+  # Wait for all encodes to complete
+  for pid in "${pids[@]}"; do
+    wait "$pid" 2>/dev/null
+  done
+
+  # Parse all log files and compute average speed
+  local total_speed=0
+  local count=0
+
+  for logfile in ffmpeg-*.log; do
+    if [ -f "$logfile" ]; then
+      # Get the final speed value from the log
+      local speed=$(grep -Eo 'speed=[0-9]+(\.[0-9]+)?x' "$logfile" | tail -1 | sed -E 's/speed=([0-9.]+)x/\1/')
+      if [ -n "$speed" ] && [ "$(echo "$speed > 0" | bc -l 2>/dev/null)" = "1" ]; then
+        total_speed=$(echo "$total_speed + $speed" | bc -l)
+        count=$((count + 1))
+      fi
+      rm -f "$logfile"
+    fi
+  done
+
+  # Clean up
+  rm -rf "$tmpdir"
+
+  if [ "$count" -eq 0 ]; then
+    echo "0"
+  else
+    # Return average speed
+    echo "scale=2; $total_speed / $count" | bc -l
+  fi
+}
+
+# Find maximum concurrency for a test (where speed stays >= 1.0x)
+# Usage: find_max_concurrency test_id test_file max_level
+# Sets: concurrency_speeds array and concurrency_max variable
+find_max_concurrency(){
+  local test_id=$1
+  local test_file=$2
+  local max_level=${3:-10}
+
+  concurrency_speeds=()
+  concurrency_max=0
+
+  for level in $(seq 1 $max_level); do
+    printf "  Testing %dx concurrent..." "$level"
+
+    local speed=$(run_concurrent_test "$test_id" "$level")
+
+    if [ -z "$speed" ] || [ "$speed" = "0" ]; then
+      printf " failed\n"
+      concurrency_speeds+=("-")
+      break
+    fi
+
+    printf " %sx\n" "$speed"
+    concurrency_speeds+=("${speed}x")
+
+    # Track max concurrency where speed >= 1.0
+    if [ "$(echo "$speed >= 1.0" | bc -l)" -eq 1 ]; then
+      concurrency_max=$level
+    else
+      # Stop testing once we drop below 1.0x
+      break
+    fi
+  done
+}
+
+# Run all concurrency tests
+run_concurrency_tests(){
+  echo ""
+  echo "======================================================="
+  echo "Concurrency Testing"
+  echo "======================================================="
+  echo ""
+  echo "Testing maximum simultaneous streams while maintaining"
+  echo "realtime (>=1.0x) encoding speed..."
+  echo ""
+
+  # Initialize concurrency results array with header
+  concurrency_arr=("CPU|TEST|FILE|1x|2x|3x|4x|5x|6x|7x|8x|9x|10x")
+
+  # Test H.264 1080p concurrency
+  echo "[1/2] H.264 1080p concurrency test"
+  find_max_concurrency "h264_1080p" "ribblehead_1080p_h264" 10
+
+  # Build result line using global arrays set by find_max_concurrency
+  local h264_line="$cpu_model|h264_1080p|ribblehead_1080p_h264"
+  for speed in "${concurrency_speeds[@]}"; do
+    h264_line="$h264_line|$speed"
+  done
+  concurrency_arr+=("$h264_line")
+  echo "  Max concurrent H.264 1080p: ${concurrency_max}x"
+  echo ""
+
+  # Test HEVC 1080p concurrency
+  echo "[2/2] HEVC 1080p concurrency test"
+  find_max_concurrency "hevc_8bit" "ribblehead_1080p_hevc_8bit" 10
+
+  # Build result line using global arrays set by find_max_concurrency
+  local hevc_line="$cpu_model|hevc_8bit|ribblehead_1080p_hevc_8bit"
+  for speed in "${concurrency_speeds[@]}"; do
+    hevc_line="$hevc_line|$speed"
+  done
+  concurrency_arr+=("$hevc_line")
+  echo "  Max concurrent HEVC 1080p: ${concurrency_max}x"
+  echo ""
+
+  echo "======================================================="
+  echo "Concurrency Results:"
+  echo ""
+  printf '%s\n' "${concurrency_arr[@]}" | column -t -s '|'
+  echo ""
+
+  # Upload concurrency results
+  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
+    upload_concurrency_results
+  fi
+}
+
+upload_concurrency_results(){
+  echo "Uploading concurrency results..."
+
+  # Create temp file for submission data
+  local tmpfile
+  tmpfile=$(mktemp)
+  printf '%s\n' "${concurrency_arr[@]}" > "$tmpfile"
+
+  # Upload to concurrency endpoint
+  local response
+  local submit_url="${API_URL}/api/submit-concurrency"
+
+  if [ -n "${QUICKSYNC_ID:-}" ]; then
+    submit_url="${submit_url}?submitter_id=${QUICKSYNC_ID}"
+  fi
+
+  response=$(curl -s -X POST \
+    -H "Content-Type: text/plain" \
+    --data-binary "@${tmpfile}" \
+    "$submit_url" 2>/dev/null) || response=""
+
+  rm -f "$tmpfile"
+
+  # Check response
+  local success
+  success=$(echo "$response" | grep -o '"success":true')
+
+  if [ -n "$success" ]; then
+    local inserted
+    inserted=$(echo "$response" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')
+    echo "  Uploaded ${inserted:-0} concurrency result(s)"
+  else
+    local error_msg
+    error_msg=$(echo "$response" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p')
+    if [ -n "$error_msg" ]; then
+      echo "  Upload failed: $error_msg"
+    else
+      echo "  Upload failed (no response from server)"
+    fi
+  fi
+}
+
 main(){
 
   #Sets Array
@@ -436,7 +674,50 @@ main(){
 
   echo ""
   echo "======================================================="
-  echo "Results:"
+  echo "Core Results:"
+  echo ""
+
+  #Print Core Results
+  printf '%s\n' "${quicksyncstats_arr[@]}" | column -t -s '|'
+  printf "\n"
+
+  # Detect and run experimental codec tests (VP9/AV1)
+  echo "======================================================="
+  echo "Experimental Codec Tests"
+  echo "======================================================="
+  echo ""
+
+  detect_qsv_codecs
+
+  local experimental_count=0
+
+  if [ "$VP9_SUPPORTED" -eq 1 ]; then
+    experimental_count=$((experimental_count + 1))
+    echo "[Experimental] VP9 1080p (QSV)"
+    benchmarks "vp9_1080p" "ribblehead_1080p_h264"
+    printf "       Done!\n"
+  fi
+
+  if [ "$AV1_SUPPORTED" -eq 1 ]; then
+    experimental_count=$((experimental_count + 1))
+    echo "[Experimental] AV1 1080p (QSV)"
+    benchmarks "av1_1080p" "ribblehead_1080p_h264"
+    printf "       Done!\n"
+  fi
+
+  if [ "$experimental_count" -eq 0 ]; then
+    echo "No experimental codecs available on this hardware."
+  else
+    echo ""
+    echo "Experimental Results:"
+    echo ""
+    # Print last N results (the experimental ones)
+    printf '%s\n' "${quicksyncstats_arr[@]}" | tail -$((experimental_count + 1)) | column -t -s '|'
+  fi
+
+  echo ""
+  echo "======================================================="
+  echo "All Results:"
   echo ""
 
   #Print Results
@@ -450,6 +731,11 @@ main(){
 
   #Unset Array
   unset quicksyncstats_arr
+
+  # Run concurrency tests if --concurrency flag was passed
+  if [ "$RUN_CONCURRENCY" -eq 1 ]; then
+    run_concurrency_tests
+  fi
 
   stop_container
 

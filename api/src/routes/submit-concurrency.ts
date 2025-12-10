@@ -42,7 +42,7 @@ submitConcurrency.post('/', async (c) => {
   // Normalize submitter ID (trim, collapse spaces)
   submitterId = normalizeSubmitterId(submitterId);
 
-  const results = parseConcurrencyResults(body);
+  const results = await parseConcurrencyResults(body);
 
   if (results.length === 0) {
     return c.json({ success: false, error: 'No valid concurrency results found' }, 400);

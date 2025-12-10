@@ -24,6 +24,11 @@ export function getStaticPaths() {
 
 const { gen } = Astro.params;
 
+// Data URL - supports test data mode via PUBLIC_TEST_DATA env var
+const dataUrl = import.meta.env.PUBLIC_TEST_DATA === 'true'
+  ? '/test-data.json'
+  : 'https://pub-c66d7559b64a430ca682a4bd624f04d8.r2.dev/benchmarks.json';
+
 // Generation display names for initial render
 const generationNames: Record<string, string> = {
   '6': '6th Gen (Skylake)',
@@ -159,6 +164,21 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
         <div class="codec-matrix" id="codec-matrix"></div>
       </section>
 
+      <!-- Architecture Details -->
+      <section id="arch-details-section" style="display: none;">
+        <h2>Architecture Details</h2>
+        <div class="arch-details-grid" id="arch-details-grid"></div>
+      </section>
+
+      <!-- Concurrency Results -->
+      <div id="concurrency-section" class="concurrency-section" style="display: none;">
+        <div class="section-header">
+          <h3>Concurrency Results</h3>
+          <span class="section-subtitle">Maximum simultaneous streams at realtime speed (≥1.0x)</span>
+        </div>
+        <div class="concurrency-tables" id="concurrency-tables"></div>
+      </div>
+
       <!-- Benchmark Data -->
       <section class="benchmark-section card">
         <h2>
@@ -205,7 +225,7 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
   </div>
 </Layout>
 
-<style>
+<style is:global>
   .container {
     max-width: 1200px;
     margin: 0 auto;
@@ -475,6 +495,358 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
     font-size: 1rem;
   }
 
+  /* Architecture Details - card boxes like TL;DR stats */
+  #arch-details-section {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  #arch-details-section h2 {
+    font-size: 1.125rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    color: var(--color-text);
+  }
+
+  .arch-details-grid {
+    display: block;
+  }
+
+  /* Legacy single-row grid for single-variant display */
+  .arch-details-grid.single-variant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .arch-detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.875rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    text-align: center;
+  }
+
+  .arch-detail-label {
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+  }
+
+  .arch-detail-value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .arch-detail-sublabel {
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
+  }
+
+  @media (max-width: 600px) {
+    .arch-details-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  /* Die Variants - multiple variants display */
+  .arch-variants-intro {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+  }
+
+  .variant-badge {
+    display: inline-block;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.25rem 0.5rem;
+    background: var(--color-accent);
+    color: white;
+    border-radius: 0.25rem;
+  }
+
+  .variant-intro-text {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  .arch-variants-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+
+  @media (max-width: 900px) {
+    .arch-variants-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* Single variant - full width to match other content sections */
+  .arch-single-variant {
+    /* No max-width - let it fill the container like other sections */
+  }
+
+  .arch-variant-card {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .arch-variant-header {
+    padding: 1rem 1.25rem;
+    background: rgba(59, 130, 246, 0.1);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .variant-codename {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0;
+  }
+
+  /* Tested CPUs badges */
+  .variant-tested-cpus {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    padding: 0.875rem 1.25rem;
+    border-top: 1px solid var(--color-border);
+    background: rgba(59, 130, 246, 0.03);
+    margin-top: auto;
+  }
+
+  .variant-tested-cpus-label {
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    width: 100%;
+    margin-bottom: 0.25rem;
+  }
+
+  .cpu-badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.25rem 0.5rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 0.25rem;
+    color: var(--color-text);
+  }
+
+  .cpu-badge-more {
+    color: var(--color-text-muted);
+    font-style: italic;
+  }
+
+  .cpu-badge-none {
+    color: var(--color-text-muted);
+    font-style: italic;
+    border-style: dashed;
+  }
+
+  /* Variant details - vertical list layout */
+  .arch-variant-details {
+    padding: 0;
+    flex: 1;
+  }
+
+  .variant-detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .variant-detail-row:last-child {
+    border-bottom: none;
+  }
+
+  .variant-detail-label {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+  }
+
+  .variant-detail-value {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text);
+    text-align: right;
+    max-width: 60%;
+  }
+
+  .variant-detail-sublabel {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-weight: 400;
+  }
+
+  /* iGPU tier badge */
+  .igpu-tier {
+    display: inline-block;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.1875rem;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+  }
+
+  .igpu-tier-entry {
+    background: rgba(156, 163, 175, 0.2);
+    color: #9ca3af;
+  }
+
+  .igpu-tier-mid {
+    background: rgba(59, 130, 246, 0.2);
+    color: #3b82f6;
+  }
+
+  .igpu-tier-high {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+  }
+
+  /* Process info link */
+  .process-info-link {
+    color: var(--color-accent);
+    text-decoration: none;
+    cursor: help;
+    border-bottom: 1px dotted var(--color-accent);
+  }
+
+  .process-info-link:hover {
+    opacity: 0.8;
+  }
+
+  /* Concurrency Section - matches index.astro styling */
+  .concurrency-section {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .concurrency-section .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+  }
+
+  .concurrency-section .section-header h3 {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0;
+  }
+
+  .concurrency-section .section-subtitle {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+  }
+
+  .concurrency-tables {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+
+  @media (max-width: 768px) {
+    .concurrency-tables {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .concurrency-table-wrapper {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+  }
+
+  .concurrency-table-wrapper h4 {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0 0 0.75rem 0;
+  }
+
+  .concurrency-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+
+  .concurrency-table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    font-weight: 600;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .concurrency-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+  }
+
+  .concurrency-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .concurrency-table tr:hover td {
+    background: rgba(59, 130, 246, 0.05);
+  }
+
+  .concurrency-table .rank-cell {
+    font-weight: 700;
+    color: var(--color-accent);
+    width: 50px;
+  }
+
+  .concurrency-table .streams-cell {
+    font-weight: 700;
+    font-size: 0.9375rem;
+    color: var(--color-success, #10b981);
+    text-align: right;
+  }
+
+  .concurrency-table .cpu-cell {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* Test Stats Table */
   .test-stats {
     overflow-x: auto;
@@ -657,8 +1029,8 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
   }
 </style>
 
-<script is:inline define:vars={{ gen }}>
-  const DATA_URL = 'https://pub-c66d7559b64a430ca682a4bd624f04d8.r2.dev/benchmarks.json';
+<script is:inline define:vars={{ gen, dataUrl }}>
+  const DATA_URL = dataUrl;
 
   // Generation info
   const generationInfo = {
@@ -713,7 +1085,10 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
       return false;
     });
 
-    const archData = data.architectures.find(a => info.architectures.includes(a.architecture));
+    // Find ALL architectures that match this generation (for die variants)
+    const allArchData = data.architectures.filter(a => info.architectures.includes(a.architecture));
+    // Use the first one for codec support (should be same across variants)
+    const archData = allArchData[0];
 
     const codecSupport = {
       h264_encode: archData?.h264_encode ?? true,
@@ -806,10 +1181,75 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
       };
     });
 
+    // Architecture details (die info) - support multiple variants
+    // Match tested CPUs to their die variants using the pattern regex
+    const archVariants = allArchData.map(arch => {
+      // Find CPUs that match this variant's pattern
+      let matchedCpus = [];
+      if (arch.pattern) {
+        try {
+          const regex = new RegExp(arch.pattern);
+          matchedCpus = Array.from(uniqueCpus).filter(cpu => {
+            // Extract model from cpu_raw string for matching
+            const modelMatch = cpu.match(/i[3579]-\d{4,5}[A-Z]?|Ultra \d \d{3}[A-Z]?/i);
+            if (modelMatch) {
+              return regex.test(modelMatch[0]);
+            }
+            return regex.test(cpu);
+          });
+        } catch (e) {
+          console.warn('Invalid regex pattern:', arch.pattern);
+        }
+      }
+
+      return {
+        igpu_name: arch.igpu_name,
+        igpu_codename: arch.igpu_codename,
+        igpu_base_mhz: arch.igpu_base_mhz,
+        igpu_boost_mhz: arch.igpu_boost_mhz,
+        process_nm: arch.process_nm,
+        max_p_cores: arch.max_p_cores,
+        max_e_cores: arch.max_e_cores,
+        tdp_range: arch.tdp_range,
+        die_layout: arch.die_layout,
+        gpu_eu_count: arch.gpu_eu_count,
+        release_year: arch.release_year,
+        release_quarter: arch.release_quarter,
+        codename: arch.codename,
+        pattern: arch.pattern,
+        tested_cpus: matchedCpus,
+      };
+    });
+
+    // For single-variant gens, keep backward compat
+    const archDetails = archVariants.length > 0 ? archVariants[0] : null;
+    const hasMultipleVariants = archVariants.length > 1;
+
+    // Concurrency results for this generation
+    const genConcurrency = (data.concurrencyResults || []).filter(r => {
+      if (isNumericGen) return r.cpu_generation === parseInt(genId);
+      if (genId === 'ultra-1') return r.architecture === 'Meteor Lake' || r.architecture === 'Lunar Lake';
+      if (genId === 'ultra-2') return r.architecture === 'Arrow Lake';
+      if (genId === 'arc') return r.architecture === 'Alchemist' || r.architecture === 'Battlemage' || r.architecture === 'Arc Alchemist';
+      return false;
+    });
+
+    // Group by test_name and find best per CPU
+    const concurrencyByTest = {};
+    for (const r of genConcurrency) {
+      if (!concurrencyByTest[r.test_name]) concurrencyByTest[r.test_name] = {};
+      if (!concurrencyByTest[r.test_name][r.cpu_raw] || r.max_concurrency > concurrencyByTest[r.test_name][r.cpu_raw].max_concurrency) {
+        concurrencyByTest[r.test_name][r.cpu_raw] = r;
+      }
+    }
+
     return {
       success: true,
       display_name: info.display_name,
       architecture: { name: archData?.architecture ?? info.architectures[0] },
+      arch_details: archDetails,
+      arch_variants: archVariants,
+      has_multiple_variants: hasMultipleVariants,
       codec_support: codecSupport,
       benchmark_stats: {
         total_results: genResults.length,
@@ -822,6 +1262,7 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
       baseline_comparison: { fps_diff_percent: fpsDiff, efficiency_diff_percent: effDiff },
       baseline_by_test: baselineByTest,
       cpu_models: cpuModels,
+      concurrency_by_test: concurrencyByTest,
     };
   }
 
@@ -1025,6 +1466,190 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
     }).join('');
     document.getElementById('cpu-models-grid').insertAdjacentHTML('beforeend', gridHtml);
 
+    // Architecture details - support multiple die variants
+    if (genData.arch_variants && genData.arch_variants.length > 0) {
+      const hasMultipleVariants = genData.has_multiple_variants;
+
+      // Process node explanations with links
+      const processExplainers = {
+        'Intel 7': { equiv: '~10nm ESF', url: 'https://en.wikipedia.org/wiki/Intel_7' },
+        'Intel 4': { equiv: '~7nm EUV', url: 'https://en.wikipedia.org/wiki/Intel_4' },
+        'Intel 3': { equiv: '~5nm class', url: 'https://en.wikipedia.org/wiki/Intel_3' },
+        'Intel 20A': { equiv: '~3nm RibbonFET', url: 'https://en.wikipedia.org/wiki/Intel_20A' },
+        'Intel 18A': { equiv: '~2nm class', url: 'https://en.wikipedia.org/wiki/Intel_18A' },
+        '14nm': { equiv: '14nm++', url: 'https://en.wikipedia.org/wiki/14_nm_process' },
+        '10nm': { equiv: '10nm SuperFin', url: 'https://en.wikipedia.org/wiki/10_nm_process' },
+        'TSMC N6': { equiv: '~7nm EUV', url: 'https://en.wikipedia.org/wiki/TSMC_7nm_process' },
+        'TSMC N5': { equiv: '5nm class', url: 'https://en.wikipedia.org/wiki/5_nm_process' },
+        'TSMC N3': { equiv: '3nm class', url: 'https://en.wikipedia.org/wiki/3_nm_process' },
+      };
+
+      // iGPU tier based on EU count
+      function getIgpuTier(euCount) {
+        if (!euCount) return null;
+        const eus = parseInt(euCount);
+        if (eus >= 64) return { tier: 'High', class: 'igpu-tier-high' };
+        if (eus >= 32) return { tier: 'Mid', class: 'igpu-tier-mid' };
+        return { tier: 'Entry', class: 'igpu-tier-entry' };
+      }
+
+      // Helper to render tested CPUs badges
+      function renderTestedCpus(cpus) {
+        // Always show this section for consistent card heights
+        if (!cpus || cpus.length === 0) {
+          return `
+            <div class="variant-tested-cpus">
+              <div class="variant-tested-cpus-label">Tested CPUs</div>
+              <span class="cpu-badge cpu-badge-none">No samples</span>
+            </div>
+          `;
+        }
+        const maxShow = 4;
+        const shown = cpus.slice(0, maxShow).map(cpu => {
+          const shortName = stripCpuBranding(cpu);
+          return `<span class="cpu-badge">${shortName}</span>`;
+        });
+        if (cpus.length > maxShow) {
+          shown.push(`<span class="cpu-badge cpu-badge-more">+${cpus.length - maxShow} more</span>`);
+        }
+        return `
+          <div class="variant-tested-cpus">
+            <div class="variant-tested-cpus-label">Tested CPUs</div>
+            ${shown.join('')}
+          </div>
+        `;
+      }
+
+      // Helper to render a single variant's details in vertical list layout
+      function renderVariantDetails(variant) {
+        const rows = [];
+        const igpuTier = getIgpuTier(variant.gpu_eu_count);
+
+        // iGPU row - combined info
+        if (variant.igpu_name) {
+          const euStr = variant.gpu_eu_count ? ` (${variant.gpu_eu_count})` : '';
+          const tierBadge = igpuTier ? `<span class="igpu-tier ${igpuTier.class}">${igpuTier.tier}</span>` : '';
+          // Build sublabel with codename, tier badge, and clock speed
+          const codenamePart = variant.igpu_codename || '';
+          const clockPart = variant.igpu_boost_mhz ? `${variant.igpu_boost_mhz} MHz boost` : '';
+          const sublabelText = [codenamePart, clockPart].filter(Boolean).join(' · ');
+          rows.push(`
+            <div class="variant-detail-row">
+              <span class="variant-detail-label">iGPU</span>
+              <span class="variant-detail-value">
+                ${variant.igpu_name}${euStr}
+                <br><span class="variant-detail-sublabel">${sublabelText}</span>${tierBadge}
+              </span>
+            </div>
+          `);
+        }
+
+        // Cores row
+        if (variant.max_p_cores !== null && variant.max_p_cores !== undefined) {
+          let coreLabel = `${variant.max_p_cores}P`;
+          if (variant.max_e_cores) {
+            coreLabel += ` + ${variant.max_e_cores}E`;
+          } else if (variant.max_e_cores === 0) {
+            coreLabel += ' only';
+          }
+          rows.push(`
+            <div class="variant-detail-row">
+              <span class="variant-detail-label">Cores</span>
+              <span class="variant-detail-value">${coreLabel}</span>
+            </div>
+          `);
+        }
+
+        // Process row with explainer link
+        if (variant.process_nm) {
+          const processInfo = processExplainers[variant.process_nm];
+          let processHtml = variant.process_nm;
+          if (processInfo) {
+            processHtml = `<a href="${processInfo.url}" target="_blank" rel="noopener" class="process-info-link" title="${processInfo.equiv}">${variant.process_nm}</a>`;
+            processHtml += `<br><span class="variant-detail-sublabel">${processInfo.equiv}</span>`;
+          }
+          rows.push(`
+            <div class="variant-detail-row">
+              <span class="variant-detail-label">Process</span>
+              <span class="variant-detail-value">${processHtml}</span>
+            </div>
+          `);
+        }
+
+        // TDP row
+        if (variant.tdp_range) {
+          rows.push(`
+            <div class="variant-detail-row">
+              <span class="variant-detail-label">TDP</span>
+              <span class="variant-detail-value">${variant.tdp_range}</span>
+            </div>
+          `);
+        }
+
+        // Released row
+        if (variant.release_year) {
+          const quarter = variant.release_quarter ? `Q${variant.release_quarter} ` : '';
+          rows.push(`
+            <div class="variant-detail-row">
+              <span class="variant-detail-label">Released</span>
+              <span class="variant-detail-value">${quarter}${variant.release_year}</span>
+            </div>
+          `);
+        }
+
+        return rows.join('');
+      }
+
+      let archHtml = '';
+
+      if (hasMultipleVariants) {
+        // Multi-variant layout with side-by-side cards
+        archHtml = `
+          <div class="arch-variants-intro">
+            <span class="variant-badge">${genData.arch_variants.length} die variants</span>
+            <span class="variant-intro-text">Different SKUs use different silicon with varying iGPU capabilities</span>
+          </div>
+          <div class="arch-variants-grid">
+            ${genData.arch_variants.map(variant => `
+              <div class="arch-variant-card">
+                <div class="arch-variant-header">
+                  <span class="variant-codename">${variant.codename || 'Unknown'}</span>
+                </div>
+                <div class="arch-variant-details">
+                  ${renderVariantDetails(variant)}
+                </div>
+                ${renderTestedCpus(variant.tested_cpus)}
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } else {
+        // Single variant - use same card structure but constrained width
+        const variant = genData.arch_variants[0];
+        archHtml = `
+          <div class="arch-single-variant">
+            <div class="arch-variant-card">
+              <div class="arch-variant-header">
+                <span class="variant-codename">${variant.codename || genData.architecture.name || 'Unknown'}</span>
+              </div>
+              <div class="arch-variant-details">
+                ${renderVariantDetails(variant)}
+              </div>
+              ${renderTestedCpus(variant.tested_cpus)}
+            </div>
+          </div>
+        `;
+      }
+
+      document.getElementById('arch-details-grid').innerHTML = archHtml;
+      document.getElementById('arch-details-section').style.display = 'block';
+    }
+
+    // Concurrency results
+    if (genData.concurrency_by_test && Object.keys(genData.concurrency_by_test).length > 0) {
+      renderConcurrencySection(genData.concurrency_by_test);
+    }
+
     // Pricing links
     const isNumeric = /^\d+$/.test(gen);
     if (isNumeric) {
@@ -1057,6 +1682,63 @@ const nextGen = currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
       script.onload = () => renderCharts(genData);
       document.head.appendChild(script);
     }
+  }
+
+  function renderConcurrencySection(concurrencyByTest) {
+    const container = document.getElementById('concurrency-tables');
+    if (!container) return;
+
+    const testOrder = ['h264_1080p', 'hevc_8bit', 'h264_4k', 'hevc_4k_10bit'];
+    const testLabels = {
+      'h264_1080p': 'H.264 1080p',
+      'hevc_8bit': 'HEVC 1080p',
+      'h264_4k': 'H.264 4K',
+      'hevc_4k_10bit': 'HEVC 4K 10-bit',
+    };
+
+    const sortedTests = Object.keys(concurrencyByTest).sort((a, b) => {
+      const aIdx = testOrder.indexOf(a);
+      const bIdx = testOrder.indexOf(b);
+      if (aIdx === -1 && bIdx === -1) return a.localeCompare(b);
+      if (aIdx === -1) return 1;
+      if (bIdx === -1) return -1;
+      return aIdx - bIdx;
+    });
+
+    const tablesHtml = sortedTests.map(testName => {
+      const cpuResults = Object.values(concurrencyByTest[testName]);
+      cpuResults.sort((a, b) => b.max_concurrency - a.max_concurrency);
+
+      const testLabel = testLabels[testName] || testName;
+
+      const rowsHtml = cpuResults.map((r, i) => {
+        const cpuDisplay = stripCpuBranding(r.cpu_raw);
+        return `<tr>
+          <td class="rank-cell">#${i + 1}</td>
+          <td class="cpu-cell">${cpuDisplay}</td>
+          <td class="streams-cell">${r.max_concurrency}x</td>
+        </tr>`;
+      }).join('');
+
+      return `
+        <div class="concurrency-table-wrapper">
+          <h4>${testLabel}</h4>
+          <table class="concurrency-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>CPU</th>
+                <th style="text-align: right">Max Streams</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = tablesHtml;
+    document.getElementById('concurrency-section').style.display = 'block';
   }
 
   function renderCharts(genData) {

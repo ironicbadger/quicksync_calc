@@ -6,7 +6,10 @@ import BoxplotChart from '../components/charts/BoxplotChart.astro';
 // API URL for submission endpoints only (data now loaded from R2)
 const API_URL = import.meta.env.PUBLIC_API_URL || 'https://quicksync-api.ktz.me';
 // R2 public URL for benchmark data
-const DATA_URL = 'https://pub-c66d7559b64a430ca682a4bd624f04d8.r2.dev/benchmarks.json';
+// Use PUBLIC_TEST_DATA=true npm run dev for local testing with test-data.json
+const DATA_URL = import.meta.env.PUBLIC_TEST_DATA === 'true'
+  ? '/test-data.json'
+  : 'https://pub-c66d7559b64a430ca682a4bd624f04d8.r2.dev/benchmarks.json';
 ---
 
 <Layout title="QuickSync Benchmarks - Intel Quick Sync Video Performance">
@@ -146,11 +149,17 @@ cd quicksync_calc
         </div>
       </div>
 
-      <!-- Charts Grid -->
+      <!-- Charts Grid (2x2) -->
       <div class="charts-grid">
         <BoxplotChart id="fps-chart" title="Average FPS by Generation" metric="avg_fps" yLabel="Frames per Second" />
         <BoxplotChart id="watts-chart" title="Power Usage by Generation" metric="avg_watts" yLabel="Watts" />
         <BoxplotChart id="efficiency-chart" title="Efficiency (FPS/Watt) by Generation" metric="fps_per_watt" yLabel="FPS per Watt" />
+        <div class="chart-container card" id="concurrency-chart-container">
+          <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--color-text-muted);">Max Concurrent Streams by Generation</h3>
+          <div class="chart-wrapper">
+            <canvas id="concurrency-chart"></canvas>
+          </div>
+        </div>
       </div>
 
       <!-- Generation Stats (shown when single generation selected) -->
@@ -201,6 +210,76 @@ cd quicksync_calc
             <div class="gen-stats-chart-container">
               <canvas id="cpu-efficiency-chart"></canvas>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Concurrency Leaderboard (shown when there's concurrency data) -->
+      <div id="concurrency-section" class="concurrency-section" style="display: none;">
+        <div class="section-header">
+          <h3>Concurrency Leaderboard</h3>
+          <span class="section-subtitle">Maximum simultaneous streams at realtime speed (≥1.0x)</span>
+        </div>
+        <div class="concurrency-tables">
+          <div class="concurrency-table-wrapper">
+            <h4>H.264 1080p</h4>
+            <table id="h264-1080p-concurrency-table" class="concurrency-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>CPU</th>
+                  <th>Max Streams</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Populated by JS -->
+              </tbody>
+            </table>
+          </div>
+          <div class="concurrency-table-wrapper">
+            <h4>H.264 4K</h4>
+            <table id="h264-4k-concurrency-table" class="concurrency-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>CPU</th>
+                  <th>Max Streams</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Populated by JS -->
+              </tbody>
+            </table>
+          </div>
+          <div class="concurrency-table-wrapper">
+            <h4>HEVC 1080p</h4>
+            <table id="hevc-8bit-concurrency-table" class="concurrency-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>CPU</th>
+                  <th>Max Streams</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Populated by JS -->
+              </tbody>
+            </table>
+          </div>
+          <div class="concurrency-table-wrapper">
+            <h4>HEVC 4K 10-bit</h4>
+            <table id="hevc-4k-10bit-concurrency-table" class="concurrency-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>CPU</th>
+                  <th>Max Streams</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Populated by JS -->
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -530,9 +609,116 @@ cd quicksync_calc
 
   .charts-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: 1.5rem;
     margin-bottom: 1.5rem;
+  }
+
+  @media (max-width: 900px) {
+    .charts-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* Concurrency chart container styling */
+  #concurrency-chart-container {
+    min-height: 350px;
+  }
+
+  #concurrency-chart-container .chart-wrapper {
+    position: relative;
+    height: 300px;
+  }
+
+  /* Concurrency Section Styles */
+  .concurrency-section {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .concurrency-section .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .concurrency-section .section-header h3 {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0;
+  }
+
+  .concurrency-section .section-subtitle {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+  }
+
+  .concurrency-tables {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+
+  @media (max-width: 900px) {
+    .concurrency-tables {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .concurrency-table-wrapper h4 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0 0 0.75rem;
+  }
+
+  .concurrency-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+
+  .concurrency-table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg);
+  }
+
+  .concurrency-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+  }
+
+  .concurrency-table tr:hover td {
+    background: var(--color-bg);
+  }
+
+  .concurrency-table .rank-cell {
+    font-weight: 700;
+    color: var(--color-accent);
+    width: 50px;
+  }
+
+  .concurrency-table .streams-cell {
+    font-weight: 600;
+    color: var(--color-success, #10b981);
+    text-align: right;
+  }
+
+  .concurrency-table .cpu-cell {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .generation-stats {
@@ -2259,9 +2445,19 @@ cd quicksync_calc
         byCpu[r.cpu_raw].push(r);
       }
 
+      // Group concurrency results by CPU
+      const concurrencyByCpu = {};
+      if (benchmarkData.concurrencyResults) {
+        for (const r of benchmarkData.concurrencyResults) {
+          if (!concurrencyByCpu[r.cpu_raw]) concurrencyByCpu[r.cpu_raw] = [];
+          concurrencyByCpu[r.cpu_raw].push(r);
+        }
+      }
+
       // Calculate average FPS and efficiency per CPU
       const cpuAvgFps = [];
       const cpuAvgEfficiency = [];
+      const cpuMaxConcurrency = [];
 
       for (const [cpu, results] of Object.entries(byCpu)) {
         const avgFps = results.reduce((sum, r) => sum + r.avg_fps, 0) / results.length;
@@ -2278,21 +2474,34 @@ cd quicksync_calc
           const avgEfficiency = effResults.reduce((sum, r) => sum + r.fps_per_watt, 0) / effResults.length;
           cpuAvgEfficiency.push({ cpu, eff: avgEfficiency });
         }
+
+        // Get max concurrency for this CPU (best across all tests)
+        const concResults = concurrencyByCpu[cpu];
+        if (concResults && concResults.length > 0) {
+          const maxConc = Math.max(...concResults.map(r => r.max_concurrency));
+          cpuMaxConcurrency.push({ cpu, conc: maxConc });
+        }
       }
 
-      // Sort by FPS and efficiency (ascending for percentile calculation)
+      // Sort by FPS, efficiency, and concurrency (ascending for percentile calculation)
       cpuAvgFps.sort((a, b) => a.fps - b.fps);
       cpuAvgEfficiency.sort((a, b) => a.eff - b.eff);
+      cpuMaxConcurrency.sort((a, b) => a.conc - b.conc);
 
       // Calculate percentile ranks (0-100 based on position in sorted array)
       const fpsPercentile = {};
       cpuAvgFps.forEach((item, idx) => {
-        fpsPercentile[item.cpu] = Math.round((idx / (cpuAvgFps.length - 1)) * 100);
+        fpsPercentile[item.cpu] = Math.round((idx / Math.max(cpuAvgFps.length - 1, 1)) * 100);
       });
 
       const effPercentile = {};
       cpuAvgEfficiency.forEach((item, idx) => {
-        effPercentile[item.cpu] = Math.round((idx / (cpuAvgEfficiency.length - 1)) * 100);
+        effPercentile[item.cpu] = Math.round((idx / Math.max(cpuAvgEfficiency.length - 1, 1)) * 100);
+      });
+
+      const concPercentile = {};
+      cpuMaxConcurrency.forEach((item, idx) => {
+        concPercentile[item.cpu] = Math.round((idx / Math.max(cpuMaxConcurrency.length - 1, 1)) * 100);
       });
 
       // Get architecture codec support lookup
@@ -2318,6 +2527,10 @@ cd quicksync_calc
         // If CPU has no valid efficiency data (all flagged), set effScore to 0
         const effScore = effPercentile[cpu] ?? (hasFlaggedResults ? 0 : 50);
 
+        // Concurrency score (percentile of max concurrent streams)
+        // Default to 50 if no concurrency data available
+        const concScore = concPercentile[cpu] ?? 50;
+
         // Codec support score (based on architecture)
         const arch = results[0]?.architecture;
         const codecs = arch ? archCodecs[arch] : null;
@@ -2328,8 +2541,8 @@ cd quicksync_calc
           if (codecs.vp9) codecScore += 10;
         }
 
-        // Weighted average: 40% performance + 35% efficiency + 25% codec support
-        const score = Math.round(perfScore * 0.4 + effScore * 0.35 + codecScore * 0.25);
+        // Weighted average: 30% performance + 25% efficiency + 25% concurrency + 20% codec support
+        const score = Math.round(perfScore * 0.30 + effScore * 0.25 + concScore * 0.25 + codecScore * 0.20);
         scores[cpu] = Math.min(100, Math.max(0, score));
       }
 
@@ -2400,7 +2613,7 @@ cd quicksync_calc
     const tbody = document.getElementById('results-body');
 
     if (results.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 2rem;">No results found</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 2rem;">No results found</td></tr>';
       return;
     }
 
@@ -2534,6 +2747,193 @@ cd quicksync_calc
     }
   }
 
+  // Populate concurrency leaderboard tables
+  function populateConcurrencyTables() {
+    if (!benchmarkData || !benchmarkData.concurrencyResults || benchmarkData.concurrencyResults.length === 0) {
+      return;
+    }
+
+    const section = document.getElementById('concurrency-section');
+    section.style.display = 'block';
+
+    // Helper to get leaderboard for a test
+    function getLeaderboard(testName, limit = 5) {
+      const results = benchmarkData.concurrencyResults.filter(r => r.test_name === testName);
+      const bestByCpu = {};
+
+      for (const r of results) {
+        if (!bestByCpu[r.cpu_raw] || r.max_concurrency > bestByCpu[r.cpu_raw].max_concurrency) {
+          bestByCpu[r.cpu_raw] = r;
+        }
+      }
+
+      return Object.values(bestByCpu)
+        .sort((a, b) => b.max_concurrency - a.max_concurrency)
+        .slice(0, limit);
+    }
+
+    // Helper to render a table
+    function renderTable(tableId, testName) {
+      const leaderboard = getLeaderboard(testName);
+      const tbody = document.querySelector(`#${tableId} tbody`);
+      if (!tbody) return;
+
+      tbody.innerHTML = leaderboard.map((r, i) => `
+        <tr>
+          <td class="rank-cell">#${i + 1}</td>
+          <td class="cpu-cell">${renderCpuName(r.cpu_raw, r.architecture, r.cpu_generation)}</td>
+          <td class="streams-cell">${r.max_concurrency}x</td>
+        </tr>
+      `).join('');
+    }
+
+    // Populate all 4 tables
+    renderTable('h264-1080p-concurrency-table', 'h264_1080p');
+    renderTable('h264-4k-concurrency-table', 'h264_4k');
+    renderTable('hevc-8bit-concurrency-table', 'hevc_8bit');
+    renderTable('hevc-4k-10bit-concurrency-table', 'hevc_4k_10bit');
+  }
+
+  // Create concurrency chart (max streams by generation)
+  function createConcurrencyChart() {
+    if (!benchmarkData || !benchmarkData.concurrencyResults || benchmarkData.concurrencyResults.length === 0) {
+      // Hide the chart container if no data
+      const container = document.getElementById('concurrency-chart-container');
+      if (container) container.style.display = 'none';
+      return;
+    }
+
+    const canvas = document.getElementById('concurrency-chart');
+    if (!canvas) return;
+
+    // Group by generation and test, find max concurrency for each
+    const byGenAndTest = {};
+
+    for (const r of benchmarkData.concurrencyResults) {
+      let groupKey;
+
+      // Determine group (same logic as other charts)
+      if (r.architecture === 'Meteor Lake' || r.architecture === 'Lunar Lake') {
+        groupKey = 'U1';
+      } else if (r.architecture === 'Arrow Lake') {
+        groupKey = 'U2';
+      } else if (r.architecture === 'Alchemist' || r.architecture === 'Battlemage') {
+        groupKey = 'Arc';
+      } else if (r.cpu_generation !== null) {
+        groupKey = String(r.cpu_generation);
+      } else {
+        continue;
+      }
+
+      const key = `${groupKey}|${r.test_name}`;
+      if (!byGenAndTest[key] || r.max_concurrency > byGenAndTest[key].max_concurrency) {
+        byGenAndTest[key] = { group: groupKey, test: r.test_name, max_concurrency: r.max_concurrency };
+      }
+    }
+
+    // Sort generations (same logic as other charts)
+    const allGroups = [...new Set(Object.values(byGenAndTest).map(d => d.group))];
+    const numericGroups = allGroups
+      .filter(g => !isNaN(parseInt(g)) && parseInt(g) >= 6)
+      .sort((a, b) => parseInt(a) - parseInt(b));
+    const nonNumericOrder = ['U1', 'U2', 'Arc'];
+    const nonNumericGroups = allGroups
+      .filter(g => isNaN(parseInt(g)))
+      .sort((a, b) => {
+        const aIdx = nonNumericOrder.indexOf(a);
+        const bIdx = nonNumericOrder.indexOf(b);
+        if (aIdx === -1 && bIdx === -1) return a.localeCompare(b);
+        if (aIdx === -1) return 1;
+        if (bIdx === -1) return -1;
+        return aIdx - bIdx;
+      });
+    const generations = [...numericGroups, ...nonNumericGroups];
+
+    // Get unique tests
+    const tests = [...new Set(Object.values(byGenAndTest).map(d => d.test))];
+
+    // Build datasets
+    const datasets = tests.map(test => {
+      const colors = testColors[test] || { bg: 'rgba(148, 163, 184, 0.6)', border: 'rgb(148, 163, 184)' };
+
+      return {
+        label: test,
+        data: generations.map(gen => {
+          const key = `${gen}|${test}`;
+          return byGenAndTest[key] ? byGenAndTest[key].max_concurrency : null;
+        }),
+        backgroundColor: colors.bg,
+        borderColor: colors.border,
+        borderWidth: 1,
+      };
+    });
+
+    // Format generation labels
+    const labels = generations.map(g => {
+      if (g === 'U1') return 'Ultra 1';
+      if (g === 'U2') return 'Ultra 2';
+      if (g === 'Arc') return 'Arc';
+      return `Gen ${g}`;
+    });
+
+    // Destroy existing chart if any
+    if (window.charts && window.charts['concurrency-chart']) {
+      window.charts['concurrency-chart'].destroy();
+    }
+    if (!window.charts) window.charts = {};
+
+    // Create new chart
+    window.charts['concurrency-chart'] = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets,
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: {
+              color: '#94a3b8',
+              font: { size: 11 },
+              boxWidth: 12,
+              padding: 8,
+            },
+          },
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            titleColor: '#f1f5f9',
+            bodyColor: '#cbd5e1',
+            borderColor: 'rgba(71, 85, 105, 0.5)',
+            borderWidth: 1,
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${ctx.raw}x streams`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: '#94a3b8', font: { size: 11 } },
+            grid: { color: 'rgba(71, 85, 105, 0.3)' },
+          },
+          y: {
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: 'Max Concurrent Streams',
+              color: '#94a3b8',
+              font: { size: 11 },
+            },
+            ticks: { color: '#94a3b8', font: { size: 11 } },
+            grid: { color: 'rgba(71, 85, 105, 0.3)' },
+          },
+        },
+      },
+    });
+  }
+
   // Initialize
   async function init() {
     // Load benchmark data from R2 first
@@ -2557,6 +2957,10 @@ cd quicksync_calc
 
     await fetchResults();
     await fetchBoxplotData();
+
+    // Populate concurrency leaderboard and chart if data exists
+    populateConcurrencyTables();
+    createConcurrencyChart();
 
     setupEventHandlers();
   }

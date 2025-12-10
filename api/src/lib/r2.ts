@@ -1,6 +1,6 @@
 /**
  * R2 storage helpers for benchmark data.
- * Replaces Turso database with a single JSON file.
+ * Uses a single JSON file stored in Cloudflare R2.
  */
 
 // Environment bindings
