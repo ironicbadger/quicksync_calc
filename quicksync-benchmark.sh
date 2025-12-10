@@ -43,6 +43,8 @@ start(){
 
   show_gpu_warning
 
+  show_concurrency_prompt
+
   cleanup
 
   dep_check
@@ -101,6 +103,38 @@ show_gpu_warning(){
   echo ""
   read -p "Press Enter to continue or Ctrl+C to abort... "
   echo ""
+}
+
+show_concurrency_prompt(){
+  if [ "$SKIP_WARNINGS" -eq 1 ]; then
+    return 0
+  fi
+
+  if [ "$RUN_CONCURRENCY" -eq 1 ]; then
+    echo "======================================================="
+    echo "              CONCURRENCY TESTING"
+    echo "======================================================="
+    echo ""
+    echo "You've enabled concurrency testing with --concurrency"
+    echo ""
+    echo "This will test how many simultaneous video encodes"
+    echo "your CPU can handle while maintaining realtime speed."
+    echo ""
+    echo "  Standard benchmarks: ~5-10 minutes"
+    echo "  + Concurrency tests: ~15-30 minutes extra"
+    echo ""
+    echo "Total estimated time: 20-40 minutes"
+    echo ""
+    echo "======================================================="
+    echo ""
+    read -p "Continue with concurrency testing? (y/n): " confirm
+
+    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+      echo "Disabling concurrency tests. Run without --concurrency flag to skip this prompt."
+      RUN_CONCURRENCY=0
+    fi
+    echo ""
+  fi
 }
 
 dep_check(){
@@ -562,30 +596,67 @@ run_concurrency_tests(){
   # Initialize concurrency results array with header
   concurrency_arr=("CPU|TEST|FILE|1x|2x|3x|4x|5x|6x|7x|8x|9x|10x")
 
-  # Test H.264 1080p concurrency
-  echo "[1/2] H.264 1080p concurrency test"
-  find_max_concurrency "h264_1080p" "ribblehead_1080p_h264" 10
+  local test_num=0
+  local total_tests=5
 
-  # Build result line using global arrays set by find_max_concurrency
-  local h264_line="$cpu_model|h264_1080p|ribblehead_1080p_h264"
+  # Test H.264 1080p concurrency
+  test_num=$((test_num + 1))
+  echo "[$test_num/$total_tests] H.264 1080p concurrency test"
+  find_max_concurrency "h264_1080p" "ribblehead_1080p_h264" 10
+  local h264_1080p_line="$cpu_model|h264_1080p|ribblehead_1080p_h264"
   for speed in "${concurrency_speeds[@]}"; do
-    h264_line="$h264_line|$speed"
+    h264_1080p_line="$h264_1080p_line|$speed"
   done
-  concurrency_arr+=("$h264_line")
+  concurrency_arr+=("$h264_1080p_line")
   echo "  Max concurrent H.264 1080p: ${concurrency_max}x"
   echo ""
 
-  # Test HEVC 1080p concurrency
-  echo "[2/2] HEVC 1080p concurrency test"
-  find_max_concurrency "hevc_8bit" "ribblehead_1080p_hevc_8bit" 10
-
-  # Build result line using global arrays set by find_max_concurrency
-  local hevc_line="$cpu_model|hevc_8bit|ribblehead_1080p_hevc_8bit"
+  # Test H.264 4K concurrency
+  test_num=$((test_num + 1))
+  echo "[$test_num/$total_tests] H.264 4K concurrency test"
+  find_max_concurrency "h264_4k" "ribblehead_4k_h264" 10
+  local h264_4k_line="$cpu_model|h264_4k|ribblehead_4k_h264"
   for speed in "${concurrency_speeds[@]}"; do
-    hevc_line="$hevc_line|$speed"
+    h264_4k_line="$h264_4k_line|$speed"
   done
-  concurrency_arr+=("$hevc_line")
-  echo "  Max concurrent HEVC 1080p: ${concurrency_max}x"
+  concurrency_arr+=("$h264_4k_line")
+  echo "  Max concurrent H.264 4K: ${concurrency_max}x"
+  echo ""
+
+  # Test HEVC 8-bit 1080p concurrency
+  test_num=$((test_num + 1))
+  echo "[$test_num/$total_tests] HEVC 8-bit 1080p concurrency test"
+  find_max_concurrency "hevc_8bit" "ribblehead_1080p_hevc_8bit" 10
+  local hevc_8bit_line="$cpu_model|hevc_8bit|ribblehead_1080p_hevc_8bit"
+  for speed in "${concurrency_speeds[@]}"; do
+    hevc_8bit_line="$hevc_8bit_line|$speed"
+  done
+  concurrency_arr+=("$hevc_8bit_line")
+  echo "  Max concurrent HEVC 8-bit 1080p: ${concurrency_max}x"
+  echo ""
+
+  # Test HEVC 10-bit 4K concurrency
+  test_num=$((test_num + 1))
+  echo "[$test_num/$total_tests] HEVC 10-bit 4K concurrency test"
+  find_max_concurrency "hevc_4k_10bit" "ribblehead_4k_hevc_10bit" 10
+  local hevc_10bit_line="$cpu_model|hevc_4k_10bit|ribblehead_4k_hevc_10bit"
+  for speed in "${concurrency_speeds[@]}"; do
+    hevc_10bit_line="$hevc_10bit_line|$speed"
+  done
+  concurrency_arr+=("$hevc_10bit_line")
+  echo "  Max concurrent HEVC 10-bit 4K: ${concurrency_max}x"
+  echo ""
+
+  # Test H.264 1080p CPU baseline concurrency
+  test_num=$((test_num + 1))
+  echo "[$test_num/$total_tests] H.264 1080p CPU baseline concurrency test"
+  find_max_concurrency "h264_1080p_cpu" "ribblehead_1080p_h264" 10
+  local h264_cpu_line="$cpu_model|h264_1080p_cpu|ribblehead_1080p_h264"
+  for speed in "${concurrency_speeds[@]}"; do
+    h264_cpu_line="$h264_cpu_line|$speed"
+  done
+  concurrency_arr+=("$h264_cpu_line")
+  echo "  Max concurrent H.264 1080p CPU: ${concurrency_max}x"
   echo ""
 
   echo "======================================================="
