@@ -71,8 +71,11 @@ cd quicksync_calc</code></pre>
       <pre style="background: var(--color-bg); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-top: 0.5rem;"><code># Run benchmark (results upload automatically)
 ./quicksync-benchmark.sh
 
+# Run with concurrency tests (tests maximum simultaneous encodes)
+./quicksync-benchmark.sh --concurrency
+
 # Run with your identifier to track your submissions
-QUICKSYNC_ID="my_homelab" ./quicksync-benchmark.sh
+QUICKSYNC_ID="my_homelab" ./quicksync-benchmark.sh --concurrency
 
 # Skip result upload
 QUICKSYNC_NO_SUBMIT=1 ./quicksync-benchmark.sh</code></pre>
