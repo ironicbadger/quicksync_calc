@@ -482,7 +482,7 @@ run_quality_test(){
 
   # Create quality test output file inside container
   local output_file="/config/quality_test_output.mp4"
-  local quality_log="/config/quality_metrics.log"
+  local quality_log="quality_metrics.log"  # Local file for capturing output
 
   # Encode 10 seconds of the H.264 1080p test file
   echo "  Encoding sample..."
@@ -504,32 +504,21 @@ run_quality_test(){
   # Measure SSIM and PSNR
   echo "  Measuring quality metrics..."
 
-  # Run SSIM/PSNR comparison
+  # Run SSIM comparison
   docker exec jellyfin-qsvtest /usr/lib/jellyfin-ffmpeg/ffmpeg \
-    -hide_banner -v quiet \
+    -hide_banner \
     -t 10 -i /config/ribblehead_1080p_h264.mp4 \
     -t 10 -i "$output_file" \
-    -lavfi "[0:v][1:v]ssim=stats_file=/dev/null;[0:v][1:v]psnr=stats_file=/dev/null" \
-    -f null - 2>"$quality_log"
+    -lavfi "ssim" \
+    -f null - 2>&1 | grep -i "ssim" > "$quality_log"
 
-  # Try alternative approach if the above fails
-  if [ ! -f "quality_metrics.log" ] || [ ! -s "quality_metrics.log" ]; then
-    # Run SSIM
-    docker exec jellyfin-qsvtest /usr/lib/jellyfin-ffmpeg/ffmpeg \
-      -hide_banner \
-      -t 10 -i /config/ribblehead_1080p_h264.mp4 \
-      -t 10 -i "$output_file" \
-      -lavfi "ssim" \
-      -f null - 2>&1 | grep -i "ssim" > quality_metrics.log
-
-    # Run PSNR
-    docker exec jellyfin-qsvtest /usr/lib/jellyfin-ffmpeg/ffmpeg \
-      -hide_banner \
-      -t 10 -i /config/ribblehead_1080p_h264.mp4 \
-      -t 10 -i "$output_file" \
-      -lavfi "psnr" \
-      -f null - 2>&1 | grep -i "psnr" >> quality_metrics.log
-  fi
+  # Run PSNR comparison
+  docker exec jellyfin-qsvtest /usr/lib/jellyfin-ffmpeg/ffmpeg \
+    -hide_banner \
+    -t 10 -i /config/ribblehead_1080p_h264.mp4 \
+    -t 10 -i "$output_file" \
+    -lavfi "psnr" \
+    -f null - 2>&1 | grep -i "psnr" >> "$quality_log"
 
   # Parse SSIM (Y channel - luma)
   # Format: [Parsed_ssim_0 @ ...] SSIM Y:0.975234 (15.00) ...
@@ -657,14 +646,14 @@ run_concurrent_test(){
 
 # Find maximum concurrency for a test (where speed stays >= 1.0x)
 # Usage: find_max_concurrency test_id test_file max_level
-# Populates concurrency_speeds array
+# Sets: concurrency_speeds array and concurrency_max variable
 find_max_concurrency(){
   local test_id=$1
   local test_file=$2
   local max_level=${3:-10}
 
   concurrency_speeds=()
-  local max_concurrency=0
+  concurrency_max=0
 
   for level in $(seq 1 $max_level); do
     printf "  Testing %dx concurrent..." "$level"
@@ -682,14 +671,12 @@ find_max_concurrency(){
 
     # Track max concurrency where speed >= 1.0
     if [ "$(echo "$speed >= 1.0" | bc -l)" -eq 1 ]; then
-      max_concurrency=$level
+      concurrency_max=$level
     else
       # Stop testing once we drop below 1.0x
       break
     fi
   done
-
-  echo "$max_concurrency"
 }
 
 # Run all concurrency tests
@@ -708,28 +695,28 @@ run_concurrency_tests(){
 
   # Test H.264 1080p concurrency
   echo "[1/2] H.264 1080p concurrency test"
-  local h264_max=$(find_max_concurrency "h264_1080p" "ribblehead_1080p_h264" 10)
+  find_max_concurrency "h264_1080p" "ribblehead_1080p_h264" 10
 
-  # Build result line
+  # Build result line using global arrays set by find_max_concurrency
   local h264_line="$cpu_model|h264_1080p|ribblehead_1080p_h264"
   for speed in "${concurrency_speeds[@]}"; do
     h264_line="$h264_line|$speed"
   done
   concurrency_arr+=("$h264_line")
-  echo "  Max concurrent H.264 1080p: ${h264_max}x"
+  echo "  Max concurrent H.264 1080p: ${concurrency_max}x"
   echo ""
 
   # Test HEVC 1080p concurrency
   echo "[2/2] HEVC 1080p concurrency test"
-  local hevc_max=$(find_max_concurrency "hevc_8bit" "ribblehead_1080p_hevc_8bit" 10)
+  find_max_concurrency "hevc_8bit" "ribblehead_1080p_hevc_8bit" 10
 
-  # Build result line
+  # Build result line using global arrays set by find_max_concurrency
   local hevc_line="$cpu_model|hevc_8bit|ribblehead_1080p_hevc_8bit"
   for speed in "${concurrency_speeds[@]}"; do
     hevc_line="$hevc_line|$speed"
   done
   concurrency_arr+=("$hevc_line")
-  echo "  Max concurrent HEVC 1080p: ${hevc_max}x"
+  echo "  Max concurrent HEVC 1080p: ${concurrency_max}x"
   echo ""
 
   echo "======================================================="
