@@ -5,8 +5,7 @@
 Enhancements to the QuickSync benchmark suite to address what users actually care about:
 
 1. **Concurrency Testing** - "How many simultaneous streams can my CPU handle?"
-2. **Quality Metrics** - "Does the output look good?" (optional via `--vmaf` flag)
-3. **Modern Codecs** - VP9/AV1 support for newer hardware
+2. **Modern Codecs** - VP9/AV1 support for newer hardware
 
 ---
 
@@ -72,20 +71,6 @@ max_concurrent_av1_1080p: 3
 
 **Behavior**: Skip gracefully if codec not supported.
 
-### 3. Quality Metrics (Optional)
-
-**Flag**: `--vmaf`
-
-**Method**: Encode 10-second clip, compare with SSIM/PSNR.
-
-**Output**:
-```
-ssim: 0.975
-psnr: 43.07
-```
-
-**Note**: Full VMAF not available in Jellyfin FFmpeg, using SSIM/PSNR instead.
-
 ---
 
 ## Test Order (v2)
@@ -100,15 +85,6 @@ psnr: 43.07
 3. Concurrency tests (~3-5 min)
 
 **Total**: ~10-12 minutes
-
-### With quality metrics
-```bash
-./quicksync-benchmark.sh --vmaf
-```
-
-Adds quality test (~30 sec).
-
-**Total**: ~12-15 minutes
 
 ---
 
@@ -138,7 +114,6 @@ interface BenchmarkData {
 ### Backwards Compatibility
 
 - `concurrencyResults` array already exists (empty)
-- New fields (`ssim`, `psnr`) are optional
 - New test types (`vp9_1080p`, `av1_1080p`) are just new entries
 - Existing data unchanged
 
@@ -156,28 +131,22 @@ interface BenchmarkData {
 - Graceful fallback if unsupported
 - New entries in `results` array
 
-### Phase 3: Quality Metrics
-- Add `--vmaf` flag
-- SSIM/PSNR measurement
-- Optional fields in submission
-
-### Phase 4: Web Display
+### Phase 3: Web Display
 - Show max concurrency per CPU
-- Quality badges
+- Concurrency leaderboard
 - Per-CPU detail pages
 
 ---
 
-## Files to Modify
+## Files Modified
 
 | File | Changes |
 |------|---------|
-| benchmark.sh | Add vp9_1080p, av1_1080p, quality_test |
-| quicksync-benchmark.sh | Add flags, concurrency loop, quality parsing |
-| api/src/lib/r2.ts | Add ssim/psnr to interface |
-| api/src/routes/submit.ts | Accept new metrics |
-| web/src/lib/dataLoader.ts | Load concurrency/quality data |
-| web/src/pages/index.astro | Display new columns |
+| quicksync-benchmark.sh | Add --concurrency flag, VP9/AV1 tests |
+| api/src/lib/r2.ts | Add ConcurrencyResult interface |
+| api/src/routes/submit.ts | Accept concurrency results |
+| web/src/lib/dataLoader.ts | Load concurrency data |
+| web/src/pages/index.astro | Display concurrency leaderboard |
 
 ---
 
@@ -186,14 +155,6 @@ interface BenchmarkData {
 ### Concurrency (i5-12600H)
 
 ```
-H.264 1080p QSV: max 11-12 simultaneous streams
+H.264 1080p QSV: max 10 simultaneous streams at realtime
+HEVC 1080p QSV: max 4 simultaneous streams at realtime
 ```
-
-### Quality (global_quality 18)
-
-```
-SSIM: 0.975 (excellent)
-PSNR: 43.07 dB (very high quality)
-```
-
-These results confirm the current quality setting produces excellent output.

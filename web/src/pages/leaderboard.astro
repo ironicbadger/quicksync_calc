@@ -452,8 +452,18 @@ import Layout from '../layouts/Layout.astro';
       byCpu[r.cpu_raw].push(r);
     }
 
+    // Group concurrency results by CPU
+    const concurrencyByCpu = {};
+    if (data.concurrencyResults) {
+      for (const r of data.concurrencyResults) {
+        if (!concurrencyByCpu[r.cpu_raw]) concurrencyByCpu[r.cpu_raw] = [];
+        concurrencyByCpu[r.cpu_raw].push(r);
+      }
+    }
+
     const cpuAvgFps = [];
     const cpuAvgEfficiency = [];
+    const cpuMaxConcurrency = [];
 
     for (const [cpu, results] of Object.entries(byCpu)) {
       cpuAvgFps.push({ cpu, fps: avg(results.map(r => r.avg_fps)) });
@@ -467,19 +477,32 @@ import Layout from '../layouts/Layout.astro';
       if (effResults.length > 0) {
         cpuAvgEfficiency.push({ cpu, eff: avg(effResults.map(r => r.fps_per_watt)) });
       }
+
+      // Get max concurrency for this CPU (best across all tests)
+      const concResults = concurrencyByCpu[cpu];
+      if (concResults && concResults.length > 0) {
+        const maxConc = Math.max(...concResults.map(r => r.max_concurrency));
+        cpuMaxConcurrency.push({ cpu, conc: maxConc });
+      }
     }
 
     cpuAvgFps.sort((a, b) => a.fps - b.fps);
     cpuAvgEfficiency.sort((a, b) => a.eff - b.eff);
+    cpuMaxConcurrency.sort((a, b) => a.conc - b.conc);
 
     const fpsPercentile = {};
     cpuAvgFps.forEach((item, idx) => {
-      fpsPercentile[item.cpu] = Math.round((idx / (cpuAvgFps.length - 1)) * 100);
+      fpsPercentile[item.cpu] = Math.round((idx / Math.max(cpuAvgFps.length - 1, 1)) * 100);
     });
 
     const effPercentile = {};
     cpuAvgEfficiency.forEach((item, idx) => {
-      effPercentile[item.cpu] = Math.round((idx / (cpuAvgEfficiency.length - 1)) * 100);
+      effPercentile[item.cpu] = Math.round((idx / Math.max(cpuAvgEfficiency.length - 1, 1)) * 100);
+    });
+
+    const concPercentile = {};
+    cpuMaxConcurrency.forEach((item, idx) => {
+      concPercentile[item.cpu] = Math.round((idx / Math.max(cpuMaxConcurrency.length - 1, 1)) * 100);
     });
 
     const archCodecs = {};
@@ -503,6 +526,10 @@ import Layout from '../layouts/Layout.astro';
       // If CPU has no valid efficiency data (all flagged), set effScore to 0
       const effScore = effPercentile[cpu] ?? (hasFlaggedResults ? 0 : 50);
 
+      // Concurrency score (percentile of max concurrent streams)
+      // Default to 50 if no concurrency data available
+      const concScore = concPercentile[cpu] ?? 50;
+
       const arch = results[0]?.architecture;
       const codecs = arch ? archCodecs[arch] : null;
       let codecScore = 50;
@@ -512,7 +539,8 @@ import Layout from '../layouts/Layout.astro';
         if (codecs.vp9) codecScore += 10;
       }
 
-      const score = Math.min(100, Math.max(0, Math.round(perfScore * 0.4 + effScore * 0.35 + codecScore * 0.25)));
+      // Weighted average: 30% performance + 25% efficiency + 25% concurrency + 20% codec support
+      const score = Math.min(100, Math.max(0, Math.round(perfScore * 0.30 + effScore * 0.25 + concScore * 0.25 + codecScore * 0.20)));
 
       scores.push({
         cpu_raw: cpu,
