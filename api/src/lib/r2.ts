@@ -32,6 +32,9 @@ export interface BenchmarkResult {
   fps_per_watt: number | null;
   result_hash: string;
   vendor: string;
+  // Quality metrics (optional, from --vmaf flag)
+  ssim?: number;      // 0-1, structural similarity
+  psnr?: number;      // dB, peak signal-to-noise ratio
 }
 
 export interface ConcurrencyResult {

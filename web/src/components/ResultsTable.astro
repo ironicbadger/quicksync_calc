@@ -25,6 +25,7 @@
           <th data-sort="cpu_raw">CPU</th>
           <th data-sort="architecture">Architecture</th>
           <th data-sort="test_name">Test</th>
+          <th>Quality</th>
           <th data-sort="avg_fps" class="numeric">FPS</th>
           <th data-sort="avg_watts" class="numeric">Watts</th>
           <th data-sort="fps_per_watt" class="numeric">FPS/Watt</th>
@@ -35,7 +36,7 @@
       </thead>
       <tbody id="results-body">
         <tr>
-          <td colspan="9" style="text-align: center; padding: 2rem;">Loading...</td>
+          <td colspan="10" style="text-align: center; padding: 2rem;">Loading...</td>
         </tr>
       </tbody>
     </table>
@@ -144,6 +145,31 @@
   }
 
   .score-badge.score-low {
+    background-color: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+  }
+
+  /* Quality badge styles */
+  .quality-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: help;
+  }
+
+  .quality-badge.quality-excellent {
+    background-color: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+  }
+
+  .quality-badge.quality-good {
+    background-color: rgba(234, 179, 8, 0.2);
+    color: #eab308;
+  }
+
+  .quality-badge.quality-fair {
     background-color: rgba(239, 68, 68, 0.2);
     color: #ef4444;
   }

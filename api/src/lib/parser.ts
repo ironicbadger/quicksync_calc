@@ -158,14 +158,21 @@ export interface ParsedResult {
   fps_per_watt: number | null;
   result_hash: string;
   vendor: string;
+  // Quality metrics (optional)
+  ssim?: number;
+  psnr?: number;
 }
 
 /**
  * Parse pipe-delimited benchmark output.
  *
- * Expected format:
+ * Expected format (basic):
  * CPU|TEST|FILE|BITRATE|TIME|AVG_FPS|AVG_SPEED|AVG_WATTS
  * Intel(R) Core(TM) i5-12500 CPU @ 3.00GHz|h264_1080p|ribblehead_1080p_h264|4500kb/s|10.5s|120.5|2.5x|15.2
+ *
+ * Extended format with quality metrics:
+ * CPU|TEST|FILE|BITRATE|TIME|AVG_FPS|AVG_SPEED|AVG_WATTS|SSIM|PSNR
+ * Intel(R) Core(TM) i5-12500 CPU @ 3.00GHz|h264_1080p|ribblehead_1080p_h264|4500kb/s|10.5s|120.5|2.5x|15.2|0.975|43.07
  */
 export function parseResults(body: string): ParsedResult[] {
   const lines = body.trim().split('\n');
@@ -182,7 +189,7 @@ export function parseResults(body: string): ParsedResult[] {
       continue; // Invalid line
     }
 
-    const [cpuRawInput, testName, testFile, bitrateStr, timeStr, fpsStr, speedStr, wattsStr] = parts.map(p => p.trim());
+    const [cpuRawInput, testName, testFile, bitrateStr, timeStr, fpsStr, speedStr, wattsStr, ssimStr, psnrStr] = parts.map(p => p.trim());
 
     // Clean CPU string: strip frequency suffix and normalize markers
     const cpuRaw = normalizeCPUString(stripFrequencySuffix(cpuRawInput));
@@ -233,11 +240,29 @@ export function parseResults(body: string): ParsedResult[] {
     // Compute fps_per_watt
     const fpsPerWatt = watts && watts > 0 ? fps / watts : null;
 
+    // Parse SSIM (optional, 0-1 range)
+    let ssim: number | undefined = undefined;
+    if (ssimStr && ssimStr.toUpperCase() !== 'N/A' && ssimStr !== '') {
+      const parsedSsim = parseFloat(ssimStr);
+      if (!isNaN(parsedSsim) && parsedSsim >= 0 && parsedSsim <= 1) {
+        ssim = parsedSsim;
+      }
+    }
+
+    // Parse PSNR (optional, dB value typically 20-60)
+    let psnr: number | undefined = undefined;
+    if (psnrStr && psnrStr.toUpperCase() !== 'N/A' && psnrStr !== '') {
+      const parsedPsnr = parseFloat(psnrStr);
+      if (!isNaN(parsedPsnr) && parsedPsnr > 0 && parsedPsnr <= 100) {
+        psnr = parsedPsnr;
+      }
+    }
+
     // Generate hash for deduplication (use cleaned CPU string)
     const hashInput = `${cpuRaw}|${testName}|${testFile}|${bitrate}|${fps}|${watts}`;
     const resultHash = createHash('sha256').update(hashInput).digest('hex');
 
-    results.push({
+    const result: ParsedResult = {
       cpu_raw: cpuRaw,
       cpu_brand: hwInfo.brand,
       cpu_model: hwInfo.model,
@@ -253,7 +278,13 @@ export function parseResults(body: string): ParsedResult[] {
       fps_per_watt: fpsPerWatt,
       result_hash: resultHash,
       vendor: vendor,
-    });
+    };
+
+    // Only include quality metrics if present
+    if (ssim !== undefined) result.ssim = ssim;
+    if (psnr !== undefined) result.psnr = psnr;
+
+    results.push(result);
   }
 
   return results;

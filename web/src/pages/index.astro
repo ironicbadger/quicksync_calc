@@ -205,6 +205,48 @@ cd quicksync_calc
         </div>
       </div>
 
+      <!-- Concurrency Leaderboard (shown when there's concurrency data) -->
+      <div id="concurrency-section" class="concurrency-section" style="display: none;">
+        <div class="section-header">
+          <h3>Concurrency Leaderboard</h3>
+          <span class="section-subtitle">Maximum simultaneous streams at realtime speed (≥1.0x)</span>
+        </div>
+        <div class="concurrency-tables">
+          <div class="concurrency-table-wrapper">
+            <h4>H.264 1080p</h4>
+            <table id="h264-concurrency-table" class="concurrency-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>CPU</th>
+                  <th>Architecture</th>
+                  <th>Max Streams</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Populated by JS -->
+              </tbody>
+            </table>
+          </div>
+          <div class="concurrency-table-wrapper">
+            <h4>HEVC 1080p</h4>
+            <table id="hevc-concurrency-table" class="concurrency-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>CPU</th>
+                  <th>Architecture</th>
+                  <th>Max Streams</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Populated by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <!-- Results Table -->
       <ResultsTable />
     </main>
@@ -533,6 +575,91 @@ cd quicksync_calc
     grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
     gap: 1.5rem;
     margin-bottom: 1.5rem;
+  }
+
+  /* Concurrency Section Styles */
+  .concurrency-section {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .concurrency-section .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .concurrency-section .section-header h3 {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0;
+  }
+
+  .concurrency-section .section-subtitle {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+  }
+
+  .concurrency-tables {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .concurrency-table-wrapper h4 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0 0 0.75rem;
+  }
+
+  .concurrency-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+
+  .concurrency-table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg);
+  }
+
+  .concurrency-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+  }
+
+  .concurrency-table tr:hover td {
+    background: var(--color-bg);
+  }
+
+  .concurrency-table .rank-cell {
+    font-weight: 700;
+    color: var(--color-accent);
+    width: 50px;
+  }
+
+  .concurrency-table .streams-cell {
+    font-weight: 600;
+    color: var(--color-success, #10b981);
+    text-align: right;
+  }
+
+  .concurrency-table .cpu-cell {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .generation-stats {
@@ -2400,7 +2527,7 @@ cd quicksync_calc
     const tbody = document.getElementById('results-body');
 
     if (results.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 2rem;">No results found</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 2rem;">No results found</td></tr>';
       return;
     }
 
@@ -2423,11 +2550,30 @@ cd quicksync_calc
         warningHtml = ` <span class="quality-warning" title="${escapeHtml(tooltip)}">⚠️</span>`;
       }
 
+      // Generate quality badge (SSIM/PSNR)
+      let qualityHtml = '-';
+      if (r.ssim !== undefined && r.ssim !== null) {
+        let qualityClass, qualityLabel;
+        if (r.ssim >= 0.98) {
+          qualityClass = 'quality-excellent';
+          qualityLabel = 'Excellent';
+        } else if (r.ssim >= 0.95) {
+          qualityClass = 'quality-good';
+          qualityLabel = 'Good';
+        } else {
+          qualityClass = 'quality-fair';
+          qualityLabel = 'Fair';
+        }
+        const tooltip = `SSIM: ${r.ssim.toFixed(4)}${r.psnr ? ` | PSNR: ${r.psnr.toFixed(1)} dB` : ''}`;
+        qualityHtml = `<span class="quality-badge ${qualityClass}" title="${tooltip}">${qualityLabel}</span>`;
+      }
+
       return `
         <tr>
           <td class="cpu-cell">${cpuHtml}${warningHtml}</td>
           <td>${escapeHtml(r.architecture) || '-'}</td>
           <td><span class="test-badge ${testClass}">${escapeHtml(r.test_name)}</span></td>
+          <td>${qualityHtml}</td>
           <td class="numeric">${r.avg_fps?.toFixed(1) || '-'}</td>
           <td class="numeric">${r.avg_watts?.toFixed(1) || '-'}</td>
           <td class="numeric">${r.fps_per_watt?.toFixed(2) || '-'}</td>
@@ -2534,6 +2680,56 @@ cd quicksync_calc
     }
   }
 
+  // Populate concurrency leaderboard tables
+  function populateConcurrencyTables() {
+    if (!benchmarkData || !benchmarkData.concurrencyResults || benchmarkData.concurrencyResults.length === 0) {
+      return;
+    }
+
+    const section = document.getElementById('concurrency-section');
+    section.style.display = 'block';
+
+    // Helper to get leaderboard for a test
+    function getLeaderboard(testName, limit = 10) {
+      const results = benchmarkData.concurrencyResults.filter(r => r.test_name === testName);
+      const bestByPcu = {};
+
+      for (const r of results) {
+        if (!bestByPcu[r.cpu_raw] || r.max_concurrency > bestByPcu[r.cpu_raw].max_concurrency) {
+          bestByPcu[r.cpu_raw] = r;
+        }
+      }
+
+      return Object.values(bestByPcu)
+        .sort((a, b) => b.max_concurrency - a.max_concurrency)
+        .slice(0, limit);
+    }
+
+    // Populate H.264 table
+    const h264Leaderboard = getLeaderboard('h264_1080p');
+    const h264Tbody = document.querySelector('#h264-concurrency-table tbody');
+    h264Tbody.innerHTML = h264Leaderboard.map((r, i) => `
+      <tr>
+        <td class="rank-cell">#${i + 1}</td>
+        <td class="cpu-cell" title="${escapeHtml(r.cpu_raw)}">${escapeHtml(r.cpu_raw)}</td>
+        <td>${escapeHtml(r.architecture || 'Unknown')}</td>
+        <td class="streams-cell">${r.max_concurrency}x</td>
+      </tr>
+    `).join('');
+
+    // Populate HEVC table
+    const hevcLeaderboard = getLeaderboard('hevc_8bit');
+    const hevcTbody = document.querySelector('#hevc-concurrency-table tbody');
+    hevcTbody.innerHTML = hevcLeaderboard.map((r, i) => `
+      <tr>
+        <td class="rank-cell">#${i + 1}</td>
+        <td class="cpu-cell" title="${escapeHtml(r.cpu_raw)}">${escapeHtml(r.cpu_raw)}</td>
+        <td>${escapeHtml(r.architecture || 'Unknown')}</td>
+        <td class="streams-cell">${r.max_concurrency}x</td>
+      </tr>
+    `).join('');
+  }
+
   // Initialize
   async function init() {
     // Load benchmark data from R2 first
@@ -2557,6 +2753,9 @@ cd quicksync_calc
 
     await fetchResults();
     await fetchBoxplotData();
+
+    // Populate concurrency leaderboard if data exists
+    populateConcurrencyTables();
 
     setupEventHandlers();
   }

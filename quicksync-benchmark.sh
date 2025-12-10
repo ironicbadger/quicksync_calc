@@ -10,19 +10,31 @@
 #
 # Flags:
 #   --skip-warnings        - Skip the GPU process warning prompt
+#   --concurrency          - Run concurrency tests (how many simultaneous streams)
+#   --vmaf                 - Run quality metrics tests (SSIM/PSNR)
 #
 
 # Parse command line arguments
 SKIP_WARNINGS=0
+RUN_CONCURRENCY=0
+RUN_QUALITY=0
 while [[ $# -gt 0 ]]; do
   case $1 in
     --skip-warnings)
       SKIP_WARNINGS=1
       shift
       ;;
+    --concurrency)
+      RUN_CONCURRENCY=1
+      shift
+      ;;
+    --vmaf)
+      RUN_QUALITY=1
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--skip-warnings]"
+      echo "Usage: $0 [--skip-warnings] [--concurrency] [--vmaf]"
       exit 1
       ;;
   esac
@@ -373,8 +385,8 @@ benchmarks(){
     rm -rf $1.output
   done
 
-  #Add data to array
-  quicksyncstats_arr+=("$cpu_model|$1|$2|$bitrate|$total_time|$avg_fps|$avg_speed|$avg_watts")
+  #Add data to array (SSIM/PSNR are empty for most tests, populated later for h264_1080p)
+  quicksyncstats_arr+=("$cpu_model|$1|$2|$bitrate|$total_time|$avg_fps|$avg_speed|$avg_watts||")
 
   clear_vars
 
@@ -404,10 +416,384 @@ run_benchmark(){
   printf "       Done!\n"
 }
 
+# ============================================================
+# Codec Detection (for experimental VP9/AV1 tests)
+# ============================================================
+
+# Check if a QSV encoder is available
+# Usage: check_qsv_encoder encoder_name
+# Returns: 0 if available, 1 if not
+check_qsv_encoder(){
+  local encoder=$1
+
+  # Try to initialize the encoder with a quick test
+  # This uses ffmpeg's -f lavfi input to avoid needing a file
+  docker exec jellyfin-qsvtest /usr/lib/jellyfin-ffmpeg/ffmpeg \
+    -hide_banner -v quiet \
+    -f lavfi -i "nullsrc=s=64x64:d=0.1" \
+    -c:v "$encoder" \
+    -frames:v 1 \
+    -f null - 2>/dev/null
+
+  return $?
+}
+
+# Detect available QSV codecs
+detect_qsv_codecs(){
+  echo "Detecting available QSV encoders..."
+
+  VP9_SUPPORTED=0
+  AV1_SUPPORTED=0
+
+  if check_qsv_encoder "vp9_qsv"; then
+    VP9_SUPPORTED=1
+    echo "  VP9 QSV: supported"
+  else
+    echo "  VP9 QSV: not available"
+  fi
+
+  if check_qsv_encoder "av1_qsv"; then
+    AV1_SUPPORTED=1
+    echo "  AV1 QSV: supported"
+  else
+    echo "  AV1 QSV: not available"
+  fi
+
+  echo ""
+}
+
+# ============================================================
+# Quality Metrics Testing (--vmaf flag)
+# ============================================================
+
+# Run quality test and measure SSIM/PSNR
+# Encodes a 10-second clip and compares with source
+run_quality_test(){
+  echo ""
+  echo "======================================================="
+  echo "Quality Metrics Test"
+  echo "======================================================="
+  echo ""
+  echo "Encoding 10-second sample and measuring quality..."
+  echo ""
+
+  # Ensure container is running
+  ensure_container_running
+
+  # Create quality test output file inside container
+  local output_file="/config/quality_test_output.mp4"
+  local quality_log="/config/quality_metrics.log"
+
+  # Encode 10 seconds of the H.264 1080p test file
+  echo "  Encoding sample..."
+  docker exec jellyfin-qsvtest /usr/lib/jellyfin-ffmpeg/ffmpeg \
+    -y -hide_banner -v quiet \
+    -t 10 -c:v h264 -i /config/ribblehead_1080p_h264.mp4 \
+    -c:a copy -c:v h264_qsv \
+    -preset fast -global_quality 18 -look_ahead 1 \
+    "$output_file" 2>/dev/null
+
+  if [ ! -f "quality_test_output.mp4" ]; then
+    # Check inside container
+    if ! docker exec jellyfin-qsvtest test -f "$output_file"; then
+      echo "  ERROR: Failed to create encoded sample"
+      return 1
+    fi
+  fi
+
+  # Measure SSIM and PSNR
+  echo "  Measuring quality metrics..."
+
+  # Run SSIM/PSNR comparison
+  docker exec jellyfin-qsvtest /usr/lib/jellyfin-ffmpeg/ffmpeg \
+    -hide_banner -v quiet \
+    -t 10 -i /config/ribblehead_1080p_h264.mp4 \
+    -t 10 -i "$output_file" \
+    -lavfi "[0:v][1:v]ssim=stats_file=/dev/null;[0:v][1:v]psnr=stats_file=/dev/null" \
+    -f null - 2>"$quality_log"
+
+  # Try alternative approach if the above fails
+  if [ ! -f "quality_metrics.log" ] || [ ! -s "quality_metrics.log" ]; then
+    # Run SSIM
+    docker exec jellyfin-qsvtest /usr/lib/jellyfin-ffmpeg/ffmpeg \
+      -hide_banner \
+      -t 10 -i /config/ribblehead_1080p_h264.mp4 \
+      -t 10 -i "$output_file" \
+      -lavfi "ssim" \
+      -f null - 2>&1 | grep -i "ssim" > quality_metrics.log
+
+    # Run PSNR
+    docker exec jellyfin-qsvtest /usr/lib/jellyfin-ffmpeg/ffmpeg \
+      -hide_banner \
+      -t 10 -i /config/ribblehead_1080p_h264.mp4 \
+      -t 10 -i "$output_file" \
+      -lavfi "psnr" \
+      -f null - 2>&1 | grep -i "psnr" >> quality_metrics.log
+  fi
+
+  # Parse SSIM (Y channel - luma)
+  # Format: [Parsed_ssim_0 @ ...] SSIM Y:0.975234 (15.00) ...
+  local ssim_y=""
+  if [ -f "quality_metrics.log" ]; then
+    ssim_y=$(grep -oE 'SSIM Y:[0-9.]+' quality_metrics.log | head -1 | sed 's/SSIM Y://')
+    if [ -z "$ssim_y" ]; then
+      ssim_y=$(grep -oE 'All:[0-9.]+' quality_metrics.log | head -1 | sed 's/All://')
+    fi
+  fi
+
+  # Parse PSNR (average)
+  # Format: [Parsed_psnr_0 @ ...] PSNR y:43.07 u:48.12 v:49.23 average:44.56 ...
+  local psnr_avg=""
+  if [ -f "quality_metrics.log" ]; then
+    psnr_avg=$(grep -oE 'average:[0-9.]+' quality_metrics.log | head -1 | sed 's/average://')
+    if [ -z "$psnr_avg" ]; then
+      psnr_avg=$(grep -oE 'y:[0-9.]+' quality_metrics.log | head -1 | sed 's/y://')
+    fi
+  fi
+
+  # Clean up
+  docker exec jellyfin-qsvtest rm -f "$output_file" 2>/dev/null
+  rm -f quality_metrics.log quality_test_output.mp4 2>/dev/null
+
+  echo ""
+  echo "Quality Results (H.264 1080p QSV, global_quality 18):"
+  echo "======================================================="
+
+  if [ -n "$ssim_y" ]; then
+    printf "  SSIM (Y):  %s\n" "$ssim_y"
+    # Interpret SSIM
+    if [ "$(echo "$ssim_y >= 0.98" | bc -l 2>/dev/null)" = "1" ]; then
+      echo "             (Excellent - visually lossless)"
+    elif [ "$(echo "$ssim_y >= 0.95" | bc -l 2>/dev/null)" = "1" ]; then
+      echo "             (Very Good - high quality)"
+    elif [ "$(echo "$ssim_y >= 0.90" | bc -l 2>/dev/null)" = "1" ]; then
+      echo "             (Good - acceptable quality)"
+    else
+      echo "             (Fair - visible artifacts)"
+    fi
+  else
+    echo "  SSIM: Could not measure"
+  fi
+
+  if [ -n "$psnr_avg" ]; then
+    printf "  PSNR:      %s dB\n" "$psnr_avg"
+    # Interpret PSNR
+    if [ "$(echo "$psnr_avg >= 45" | bc -l 2>/dev/null)" = "1" ]; then
+      echo "             (Excellent)"
+    elif [ "$(echo "$psnr_avg >= 40" | bc -l 2>/dev/null)" = "1" ]; then
+      echo "             (Very Good)"
+    elif [ "$(echo "$psnr_avg >= 35" | bc -l 2>/dev/null)" = "1" ]; then
+      echo "             (Good)"
+    else
+      echo "             (Fair)"
+    fi
+  else
+    echo "  PSNR: Could not measure"
+  fi
+
+  echo ""
+
+  # Store quality results for potential future API submission
+  QUALITY_SSIM="$ssim_y"
+  QUALITY_PSNR="$psnr_avg"
+}
+
+# ============================================================
+# Concurrency Testing
+# ============================================================
+
+# Run N concurrent encodes and measure average speed
+# Usage: run_concurrent_test test_id concurrency
+# Returns: average speed across all streams (or 0 if failed)
+run_concurrent_test(){
+  local test_id=$1
+  local concurrency=$2
+  local tmpdir=$(mktemp -d)
+  local pids=()
+
+  # Ensure container is running
+  ensure_container_running
+
+  # Clean up any old log files
+  rm -f ffmpeg-*.log 2>/dev/null
+
+  # Start N concurrent encodes in background
+  for i in $(seq 1 $concurrency); do
+    docker exec jellyfin-qsvtest /config/benchmark.sh "$test_id" 2>/dev/null &
+    pids+=($!)
+  done
+
+  # Wait for all encodes to complete
+  for pid in "${pids[@]}"; do
+    wait "$pid" 2>/dev/null
+  done
+
+  # Parse all log files and compute average speed
+  local total_speed=0
+  local count=0
+
+  for logfile in ffmpeg-*.log; do
+    if [ -f "$logfile" ]; then
+      # Get the final speed value from the log
+      local speed=$(grep -Eo 'speed=[0-9]+(\.[0-9]+)?x' "$logfile" | tail -1 | sed -E 's/speed=([0-9.]+)x/\1/')
+      if [ -n "$speed" ] && [ "$(echo "$speed > 0" | bc -l 2>/dev/null)" = "1" ]; then
+        total_speed=$(echo "$total_speed + $speed" | bc -l)
+        count=$((count + 1))
+      fi
+      rm -f "$logfile"
+    fi
+  done
+
+  # Clean up
+  rm -rf "$tmpdir"
+
+  if [ "$count" -eq 0 ]; then
+    echo "0"
+  else
+    # Return average speed
+    echo "scale=2; $total_speed / $count" | bc -l
+  fi
+}
+
+# Find maximum concurrency for a test (where speed stays >= 1.0x)
+# Usage: find_max_concurrency test_id test_file max_level
+# Populates concurrency_speeds array
+find_max_concurrency(){
+  local test_id=$1
+  local test_file=$2
+  local max_level=${3:-10}
+
+  concurrency_speeds=()
+  local max_concurrency=0
+
+  for level in $(seq 1 $max_level); do
+    printf "  Testing %dx concurrent..." "$level"
+
+    local speed=$(run_concurrent_test "$test_id" "$level")
+
+    if [ -z "$speed" ] || [ "$speed" = "0" ]; then
+      printf " failed\n"
+      concurrency_speeds+=("-")
+      break
+    fi
+
+    printf " %sx\n" "$speed"
+    concurrency_speeds+=("${speed}x")
+
+    # Track max concurrency where speed >= 1.0
+    if [ "$(echo "$speed >= 1.0" | bc -l)" -eq 1 ]; then
+      max_concurrency=$level
+    else
+      # Stop testing once we drop below 1.0x
+      break
+    fi
+  done
+
+  echo "$max_concurrency"
+}
+
+# Run all concurrency tests
+run_concurrency_tests(){
+  echo ""
+  echo "======================================================="
+  echo "Concurrency Testing"
+  echo "======================================================="
+  echo ""
+  echo "Testing maximum simultaneous streams while maintaining"
+  echo "realtime (>=1.0x) encoding speed..."
+  echo ""
+
+  # Initialize concurrency results array with header
+  concurrency_arr=("CPU|TEST|FILE|1x|2x|3x|4x|5x|6x|7x|8x|9x|10x")
+
+  # Test H.264 1080p concurrency
+  echo "[1/2] H.264 1080p concurrency test"
+  local h264_max=$(find_max_concurrency "h264_1080p" "ribblehead_1080p_h264" 10)
+
+  # Build result line
+  local h264_line="$cpu_model|h264_1080p|ribblehead_1080p_h264"
+  for speed in "${concurrency_speeds[@]}"; do
+    h264_line="$h264_line|$speed"
+  done
+  concurrency_arr+=("$h264_line")
+  echo "  Max concurrent H.264 1080p: ${h264_max}x"
+  echo ""
+
+  # Test HEVC 1080p concurrency
+  echo "[2/2] HEVC 1080p concurrency test"
+  local hevc_max=$(find_max_concurrency "hevc_8bit" "ribblehead_1080p_hevc_8bit" 10)
+
+  # Build result line
+  local hevc_line="$cpu_model|hevc_8bit|ribblehead_1080p_hevc_8bit"
+  for speed in "${concurrency_speeds[@]}"; do
+    hevc_line="$hevc_line|$speed"
+  done
+  concurrency_arr+=("$hevc_line")
+  echo "  Max concurrent HEVC 1080p: ${hevc_max}x"
+  echo ""
+
+  echo "======================================================="
+  echo "Concurrency Results:"
+  echo ""
+  printf '%s\n' "${concurrency_arr[@]}" | column -t -s '|'
+  echo ""
+
+  # Upload concurrency results
+  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
+    upload_concurrency_results
+  fi
+}
+
+upload_concurrency_results(){
+  echo "Uploading concurrency results..."
+
+  # Create temp file for submission data
+  local tmpfile
+  tmpfile=$(mktemp)
+  printf '%s\n' "${concurrency_arr[@]}" > "$tmpfile"
+
+  # Upload to concurrency endpoint
+  local response
+  local submit_url="${API_URL}/api/submit-concurrency"
+
+  if [ -n "${QUICKSYNC_ID:-}" ]; then
+    submit_url="${submit_url}?submitter_id=${QUICKSYNC_ID}"
+  fi
+
+  response=$(curl -s -X POST \
+    -H "Content-Type: text/plain" \
+    --data-binary "@${tmpfile}" \
+    "$submit_url" 2>/dev/null) || response=""
+
+  rm -f "$tmpfile"
+
+  # Check response
+  local success
+  success=$(echo "$response" | grep -o '"success":true')
+
+  if [ -n "$success" ]; then
+    local inserted
+    inserted=$(echo "$response" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')
+    echo "  Uploaded ${inserted:-0} concurrency result(s)"
+  else
+    local error_msg
+    error_msg=$(echo "$response" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p')
+    if [ -n "$error_msg" ]; then
+      echo "  Upload failed: $error_msg"
+    else
+      echo "  Upload failed (no response from server)"
+    fi
+  fi
+}
+
 main(){
 
-  #Sets Array
-  quicksyncstats_arr=("CPU|TEST|FILE|BITRATE|TIME|AVG_FPS|AVG_SPEED|AVG_WATTS")
+  #Sets Array - include SSIM/PSNR columns (populated for h264_1080p when --vmaf is used)
+  quicksyncstats_arr=("CPU|TEST|FILE|BITRATE|TIME|AVG_FPS|AVG_SPEED|AVG_WATTS|SSIM|PSNR")
+
+  # Initialize quality metrics (will be populated if --vmaf is used)
+  QUALITY_SSIM=""
+  QUALITY_PSNR=""
 
   #Collects CPU Model
   cpuinfo_model="$(grep -m1 'model name' /proc/cpuinfo | cut -d':' -f2)"
@@ -436,7 +822,71 @@ main(){
 
   echo ""
   echo "======================================================="
-  echo "Results:"
+  echo "Core Results:"
+  echo ""
+
+  #Print Core Results
+  printf '%s\n' "${quicksyncstats_arr[@]}" | column -t -s '|'
+  printf "\n"
+
+  # Detect and run experimental codec tests (VP9/AV1)
+  echo "======================================================="
+  echo "Experimental Codec Tests"
+  echo "======================================================="
+  echo ""
+
+  detect_qsv_codecs
+
+  local experimental_count=0
+
+  if [ "$VP9_SUPPORTED" -eq 1 ]; then
+    experimental_count=$((experimental_count + 1))
+    echo "[Experimental] VP9 1080p (QSV)"
+    benchmarks "vp9_1080p" "ribblehead_1080p_h264"
+    printf "       Done!\n"
+  fi
+
+  if [ "$AV1_SUPPORTED" -eq 1 ]; then
+    experimental_count=$((experimental_count + 1))
+    echo "[Experimental] AV1 1080p (QSV)"
+    benchmarks "av1_1080p" "ribblehead_1080p_h264"
+    printf "       Done!\n"
+  fi
+
+  if [ "$experimental_count" -eq 0 ]; then
+    echo "No experimental codecs available on this hardware."
+  else
+    echo ""
+    echo "Experimental Results:"
+    echo ""
+    # Print last N results (the experimental ones)
+    printf '%s\n' "${quicksyncstats_arr[@]}" | tail -$((experimental_count + 1)) | column -t -s '|'
+  fi
+
+  # Run quality metrics test if --vmaf flag was passed (before upload)
+  if [ "$RUN_QUALITY" -eq 1 ]; then
+    run_quality_test
+
+    # Update h264_1080p result with quality metrics
+    if [ -n "$QUALITY_SSIM" ] || [ -n "$QUALITY_PSNR" ]; then
+      # Find and update the h264_1080p line in the array
+      for i in "${!quicksyncstats_arr[@]}"; do
+        if [[ "${quicksyncstats_arr[$i]}" == *"|h264_1080p|"* ]]; then
+          # Replace trailing || with |SSIM|PSNR
+          local line="${quicksyncstats_arr[$i]}"
+          # Remove trailing ||
+          line="${line%||}"
+          # Add quality metrics
+          quicksyncstats_arr[$i]="${line}|${QUALITY_SSIM:-}|${QUALITY_PSNR:-}"
+          break
+        fi
+      done
+    fi
+  fi
+
+  echo ""
+  echo "======================================================="
+  echo "All Results:"
   echo ""
 
   #Print Results
@@ -450,6 +900,11 @@ main(){
 
   #Unset Array
   unset quicksyncstats_arr
+
+  # Run concurrency tests if --concurrency flag was passed
+  if [ "$RUN_CONCURRENCY" -eq 1 ]; then
+    run_concurrency_tests
+  fi
 
   stop_container
 

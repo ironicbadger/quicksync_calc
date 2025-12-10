@@ -23,6 +23,9 @@ export interface BenchmarkResult {
   fps_per_watt: number | null;
   result_hash: string;
   vendor: string;
+  // Quality metrics (optional, from --vmaf flag)
+  ssim?: number;
+  psnr?: number;
 }
 
 export interface CpuArchitecture {
@@ -49,6 +52,23 @@ export interface CpuArchitecture {
   vendor: string;
 }
 
+export interface ConcurrencyResult {
+  id: number;
+  submitted_at: string;
+  submitter_id: string | null;
+  cpu_raw: string;
+  cpu_brand: string | null;
+  cpu_model: string | null;
+  cpu_generation: number | null;
+  architecture: string | null;
+  test_name: string;
+  test_file: string;
+  speeds_json: number[];
+  max_concurrency: number;
+  result_hash: string;
+  vendor: string;
+}
+
 export interface BenchmarkData {
   version: number;
   lastUpdated: string;
@@ -60,7 +80,7 @@ export interface BenchmarkData {
   };
   architectures: CpuArchitecture[];
   results: BenchmarkResult[];
-  concurrencyResults: any[];
+  concurrencyResults: ConcurrencyResult[];
   cpuFeatures: Record<string, { ecc_support: boolean }>;
 }
 
@@ -892,4 +912,105 @@ export function getArchitectureStats(data: BenchmarkData, architectures: string[
     success: true,
     stats,
   };
+}
+
+// ============================================================
+// Concurrency Data Functions
+// ============================================================
+
+/**
+ * Get concurrency results for a specific CPU
+ */
+export function getConcurrencyForCpu(data: BenchmarkData, cpuRaw: string): ConcurrencyResult[] {
+  return data.concurrencyResults.filter(r => r.cpu_raw === cpuRaw);
+}
+
+/**
+ * Get max concurrency by test for a CPU
+ * Returns: { h264_1080p: 11, hevc_8bit: 6, av1_1080p: 3 }
+ */
+export function getMaxConcurrencyByCpu(data: BenchmarkData, cpuRaw: string): Record<string, number> {
+  const results = getConcurrencyForCpu(data, cpuRaw);
+  const maxByCpu: Record<string, number> = {};
+
+  for (const r of results) {
+    const current = maxByCpu[r.test_name] || 0;
+    if (r.max_concurrency > current) {
+      maxByCpu[r.test_name] = r.max_concurrency;
+    }
+  }
+
+  return maxByCpu;
+}
+
+/**
+ * Get concurrency summary for all CPUs
+ * Returns array of { cpu_raw, architecture, h264_max, hevc_max, av1_max }
+ */
+export function getConcurrencySummary(data: BenchmarkData): Array<{
+  cpu_raw: string;
+  architecture: string | null;
+  cpu_generation: number | null;
+  h264_max: number | null;
+  hevc_max: number | null;
+  av1_max: number | null;
+}> {
+  // Group by CPU
+  const byCpu: Record<string, ConcurrencyResult[]> = {};
+  for (const r of data.concurrencyResults) {
+    if (!byCpu[r.cpu_raw]) byCpu[r.cpu_raw] = [];
+    byCpu[r.cpu_raw].push(r);
+  }
+
+  return Object.entries(byCpu).map(([cpu, results]) => {
+    const h264 = results.find(r => r.test_name === 'h264_1080p');
+    const hevc = results.find(r => r.test_name === 'hevc_8bit');
+    const av1 = results.find(r => r.test_name === 'av1_1080p');
+
+    return {
+      cpu_raw: cpu,
+      architecture: results[0]?.architecture ?? null,
+      cpu_generation: results[0]?.cpu_generation ?? null,
+      h264_max: h264?.max_concurrency ?? null,
+      hevc_max: hevc?.max_concurrency ?? null,
+      av1_max: av1?.max_concurrency ?? null,
+    };
+  });
+}
+
+/**
+ * Get concurrency leaderboard (CPUs ranked by max concurrent streams)
+ */
+export function getConcurrencyLeaderboard(
+  data: BenchmarkData,
+  testName: string = 'h264_1080p'
+): Array<{
+  cpu_raw: string;
+  architecture: string | null;
+  cpu_generation: number | null;
+  max_concurrency: number;
+  speeds: number[];
+}> {
+  // Filter for specified test
+  const results = data.concurrencyResults.filter(r => r.test_name === testName);
+
+  // Get best result per CPU
+  const bestByCpu: Record<string, ConcurrencyResult> = {};
+  for (const r of results) {
+    const current = bestByCpu[r.cpu_raw];
+    if (!current || r.max_concurrency > current.max_concurrency) {
+      bestByCpu[r.cpu_raw] = r;
+    }
+  }
+
+  // Convert to array and sort by max_concurrency
+  return Object.values(bestByCpu)
+    .map(r => ({
+      cpu_raw: r.cpu_raw,
+      architecture: r.architecture,
+      cpu_generation: r.cpu_generation,
+      max_concurrency: r.max_concurrency,
+      speeds: r.speeds_json,
+    }))
+    .sort((a, b) => b.max_concurrency - a.max_concurrency);
 }

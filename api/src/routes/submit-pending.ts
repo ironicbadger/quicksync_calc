@@ -234,6 +234,10 @@ submitPending.post('/confirm', async (c) => {
           vendor: result.vendor,
         };
 
+        // Include quality metrics if present
+        if (result.ssim !== undefined) newResult.ssim = result.ssim;
+        if (result.psnr !== undefined) newResult.psnr = result.psnr;
+
         data.results.push(newResult);
         inserted++;
       }
