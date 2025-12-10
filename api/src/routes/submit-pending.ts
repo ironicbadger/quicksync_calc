@@ -7,9 +7,9 @@
  */
 
 import { Hono } from 'hono';
-import { Env, readData, writeData, getNextId, hashExists, BenchmarkResult } from '../lib/r2';
+import { Env, readData, writeData, getNextId, hashExists, BenchmarkResult, ConcurrencyResult } from '../lib/r2';
 import { withLock } from '../lib/lock';
-import { parseResults, ParsedResult } from '../lib/parser';
+import { parseResults, parseConcurrencyResults, ParsedResult, ParsedConcurrencyResult } from '../lib/parser';
 import { isBlockedCPU } from '../lib/cpu-parser';
 import { validateSubmitterId, normalizeSubmitterId } from '../lib/sanitize';
 
@@ -17,6 +17,7 @@ const submitPending = new Hono<{ Bindings: Env }>();
 
 interface PendingSubmission {
   results: ParsedResult[];
+  concurrencyResults?: ParsedConcurrencyResult[];
   created_at: string;
 }
 
@@ -92,6 +93,59 @@ submitPending.post('/', async (c) => {
 });
 
 /**
+ * POST /api/submit/pending/:token/concurrency
+ * Add concurrency results to an existing pending submission.
+ */
+submitPending.post('/:token/concurrency', async (c) => {
+  const token = c.req.param('token');
+  const body = await c.req.text();
+
+  if (!token) {
+    return c.json({ success: false, error: 'Token required' }, 400);
+  }
+
+  if (!body.trim()) {
+    return c.json({ success: false, error: 'Empty request body' }, 400);
+  }
+
+  // Fetch existing pending submission
+  const existingData = await c.env.PENDING_SUBMISSIONS.get(`${KV_PREFIX}${token}`);
+
+  if (!existingData) {
+    return c.json({
+      success: false,
+      error: 'Submission not found or expired',
+      expired: true,
+    }, 404);
+  }
+
+  const submission: PendingSubmission = JSON.parse(existingData);
+
+  // Parse concurrency results
+  const concurrencyResults = await parseConcurrencyResults(body);
+
+  if (concurrencyResults.length === 0) {
+    return c.json({ success: false, error: 'No valid concurrency results found' }, 400);
+  }
+
+  // Add concurrency results to submission
+  submission.concurrencyResults = concurrencyResults;
+
+  // Update in KV
+  await c.env.PENDING_SUBMISSIONS.put(
+    `${KV_PREFIX}${token}`,
+    JSON.stringify(submission),
+    { expirationTtl: TTL_SECONDS }
+  );
+
+  return c.json({
+    success: true,
+    concurrency_results_count: concurrencyResults.length,
+    message: 'Concurrency results added to submission',
+  });
+});
+
+/**
  * GET /api/submit/pending/:token
  * Retrieve pending submission for preview on web page.
  */
@@ -117,8 +171,10 @@ submitPending.get('/:token', async (c) => {
   return c.json({
     success: true,
     results: submission.results,
+    concurrencyResults: submission.concurrencyResults || [],
     created_at: submission.created_at,
     results_count: submission.results.length,
+    concurrency_results_count: submission.concurrencyResults?.length || 0,
   });
 });
 
@@ -189,6 +245,7 @@ submitPending.post('/confirm', async (c) => {
 
   const submission: PendingSubmission = JSON.parse(kvData);
   const results = submission.results;
+  const concurrencyResults = submission.concurrencyResults || [];
 
   // Normalize submitter_id (already validated above)
   const sanitizedSubmitterId = normalizeSubmitterId(submitter_id);
@@ -196,16 +253,18 @@ submitPending.post('/confirm', async (c) => {
   // Insert results into R2 JSON with locking
   let inserted = 0;
   let skipped = 0;
+  let concurrencyInserted = 0;
+  let concurrencySkipped = 0;
 
   try {
     await withLock(c.env.PENDING_SUBMISSIONS, async () => {
       // Read current data
       const data = await readData(c.env.DATA_BUCKET);
 
-      // Get next ID
+      // Get next ID for standard results
       let nextId = getNextId(data.results);
 
-      // Add each result
+      // Add each standard result
       for (const result of results) {
         // Skip duplicates
         if (hashExists(data.results, result.result_hash)) {
@@ -238,8 +297,47 @@ submitPending.post('/confirm', async (c) => {
         inserted++;
       }
 
+      // Add concurrency results if present
+      if (concurrencyResults.length > 0) {
+        let concurrencyNextId = data.concurrencyResults.length > 0
+          ? Math.max(...data.concurrencyResults.map(r => r.id)) + 1
+          : 1;
+
+        for (const result of concurrencyResults) {
+          // Check for duplicate concurrency results
+          const isDuplicate = data.concurrencyResults.some(
+            r => r.result_hash === result.result_hash
+          );
+
+          if (isDuplicate) {
+            concurrencySkipped++;
+            continue;
+          }
+
+          const newConcurrencyResult: ConcurrencyResult = {
+            id: concurrencyNextId++,
+            submitted_at: new Date().toISOString(),
+            submitter_id: sanitizedSubmitterId,
+            cpu_raw: result.cpu_raw,
+            cpu_brand: result.cpu_brand,
+            cpu_model: result.cpu_model,
+            cpu_generation: result.cpu_generation,
+            architecture: result.architecture,
+            test_name: result.test_name,
+            test_file: result.test_file,
+            speeds_json: result.speeds_json,
+            max_concurrency: result.max_concurrency,
+            result_hash: result.result_hash,
+            vendor: result.vendor,
+          };
+
+          data.concurrencyResults.push(newConcurrencyResult);
+          concurrencyInserted++;
+        }
+      }
+
       // Write back to R2 (with backup)
-      if (inserted > 0) {
+      if (inserted > 0 || concurrencyInserted > 0) {
         await writeData(c.env.DATA_BUCKET, data);
       }
     });
@@ -255,14 +353,25 @@ submitPending.post('/confirm', async (c) => {
   // Delete from KV after successful insertion
   await c.env.PENDING_SUBMISSIONS.delete(`${KV_PREFIX}${token}`);
 
+  const totalInserted = inserted + concurrencyInserted;
+  let message = '';
+  if (totalInserted > 0) {
+    const parts = [];
+    if (inserted > 0) parts.push(`${inserted} benchmark result${inserted !== 1 ? 's' : ''}`);
+    if (concurrencyInserted > 0) parts.push(`${concurrencyInserted} concurrency result${concurrencyInserted !== 1 ? 's' : ''}`);
+    message = `Successfully submitted ${parts.join(' and ')}!`;
+  } else {
+    message = 'All results were already in the database.';
+  }
+
   return c.json({
     success: true,
     inserted,
     skipped,
-    total: results.length,
-    message: inserted > 0
-      ? `Successfully submitted ${inserted} result${inserted !== 1 ? 's' : ''}!`
-      : 'All results were already in the database.',
+    concurrency_inserted: concurrencyInserted,
+    concurrency_skipped: concurrencySkipped,
+    total: results.length + concurrencyResults.length,
+    message,
   });
 });
 

@@ -45,7 +45,7 @@ export interface ConcurrencyResult {
   architecture: string | null;
   test_name: string;
   test_file: string;
-  speeds_json: number[];
+  speeds_json: string;
   max_concurrency: number;
   result_hash: string;
   vendor: string;

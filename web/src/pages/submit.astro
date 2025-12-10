@@ -40,7 +40,7 @@ const TURNSTILE_SITE_KEY = '0x4AAAAAACE2xYy4W4qewY3u';
       <!-- Results Preview -->
       <div class="card results-preview">
         <div class="card-header">
-          <h2>Your Benchmark Results</h2>
+          <h2>Standard Benchmark Results</h2>
           <span id="results-meta" class="results-meta"></span>
         </div>
 
@@ -58,6 +58,38 @@ const TURNSTILE_SITE_KEY = '0x4AAAAAACE2xYy4W4qewY3u';
               </tr>
             </thead>
             <tbody id="results-tbody">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Concurrency Results Preview -->
+      <div id="concurrency-preview" class="card results-preview" style="display: none;">
+        <div class="card-header">
+          <h2>Concurrency Test Results</h2>
+          <span id="concurrency-meta" class="results-meta"></span>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="results-table concurrency-table">
+            <thead>
+              <tr>
+                <th>Test</th>
+                <th>1x</th>
+                <th>2x</th>
+                <th>3x</th>
+                <th>4x</th>
+                <th>5x</th>
+                <th>6x</th>
+                <th>7x</th>
+                <th>8x</th>
+                <th>9x</th>
+                <th>10x</th>
+                <th>Max</th>
+              </tr>
+            </thead>
+            <tbody id="concurrency-tbody">
               <!-- Populated by JS -->
             </tbody>
           </table>
@@ -120,6 +152,9 @@ const TURNSTILE_SITE_KEY = '0x4AAAAAACE2xYy4W4qewY3u';
     const successMessage = document.getElementById('success-message');
     const resultsMeta = document.getElementById('results-meta');
     const resultsTbody = document.getElementById('results-tbody');
+    const concurrencyPreview = document.getElementById('concurrency-preview');
+    const concurrencyMeta = document.getElementById('concurrency-meta');
+    const concurrencyTbody = document.getElementById('concurrency-tbody');
     const submitterInput = document.getElementById('submitter-id');
     const submitBtn = document.getElementById('submit-btn');
     const submitText = document.getElementById('submit-text');
@@ -159,6 +194,7 @@ const TURNSTILE_SITE_KEY = '0x4AAAAAACE2xYy4W4qewY3u';
 
         state.results = data.results;
         renderResults(data);
+        renderConcurrencyResults(data);
         initTurnstile();
         showState('preview');
 
@@ -226,6 +262,49 @@ const TURNSTILE_SITE_KEY = '0x4AAAAAACE2xYy4W4qewY3u';
             <td class="metric-cell">${speedDisplay}</td>
             <td class="metric-cell">${wattsDisplay}</td>
             <td class="metric-cell">${effDisplay}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderConcurrencyResults(data) {
+      const concurrencyResults = data.concurrencyResults;
+      if (!concurrencyResults || concurrencyResults.length === 0) {
+        concurrencyPreview.style.display = 'none';
+        return;
+      }
+
+      // Show concurrency section
+      concurrencyPreview.style.display = 'block';
+
+      // Set metadata
+      concurrencyMeta.innerHTML = `${concurrencyResults.length} test${concurrencyResults.length !== 1 ? 's' : ''}`;
+
+      // Render table rows
+      concurrencyTbody.innerHTML = concurrencyResults.map(r => {
+        const testDisplay = formatTestName(r.test_name);
+        const speeds = JSON.parse(r.speeds_json);
+
+        // Create cells for each concurrency level (1x through 10x)
+        let speedCells = '';
+        for (let i = 1; i <= 10; i++) {
+          const speed = speeds[i];
+          if (speed !== undefined && speed !== null) {
+            const speedClass = speed >= 1.0 ? 'speed-good' : 'speed-warn';
+            speedCells += `<td class="metric-cell ${speedClass}">${speed.toFixed(2)}x</td>`;
+          } else {
+            speedCells += `<td class="metric-cell speed-na">-</td>`;
+          }
+        }
+
+        // Max concurrency cell
+        const maxClass = r.max_concurrency >= 4 ? 'max-good' : r.max_concurrency >= 2 ? 'max-ok' : 'max-low';
+
+        return `
+          <tr>
+            <td><span class="test-badge test-${getTestType(r.test_name)}">${testDisplay}</span></td>
+            ${speedCells}
+            <td class="metric-cell max-concurrency ${maxClass}">${r.max_concurrency}</td>
           </tr>
         `;
       }).join('');
@@ -322,7 +401,21 @@ const TURNSTILE_SITE_KEY = '0x4AAAAAACE2xYy4W4qewY3u';
           return;
         }
 
-        showSuccess(data.message || `Successfully submitted ${data.inserted} result${data.inserted !== 1 ? 's' : ''}!`);
+        // Build success message
+        let message = data.message;
+        if (!message) {
+          const parts = [];
+          if (data.inserted > 0) {
+            parts.push(`${data.inserted} benchmark result${data.inserted !== 1 ? 's' : ''}`);
+          }
+          if (data.concurrency_inserted > 0) {
+            parts.push(`${data.concurrency_inserted} concurrency result${data.concurrency_inserted !== 1 ? 's' : ''}`);
+          }
+          message = parts.length > 0
+            ? `Successfully submitted ${parts.join(' and ')}!`
+            : 'All results were already in the database.';
+        }
+        showSuccess(message);
 
       } catch (err) {
         console.error('Submit error:', err);
@@ -499,6 +592,45 @@ const TURNSTILE_SITE_KEY = '0x4AAAAAACE2xYy4W4qewY3u';
     .test-other {
       background: rgba(148, 163, 184, 0.15);
       color: #94a3b8;
+    }
+
+    /* Concurrency table styles */
+    .concurrency-table th {
+      font-size: 0.7rem;
+      padding: 0.75rem 0.5rem;
+    }
+
+    .concurrency-table td {
+      padding: 0.75rem 0.5rem;
+      font-size: 0.8rem;
+    }
+
+    .speed-good {
+      color: #22c55e;
+    }
+
+    .speed-warn {
+      color: #eab308;
+    }
+
+    .speed-na {
+      color: var(--color-text-muted);
+    }
+
+    .max-concurrency {
+      font-weight: 600;
+    }
+
+    .max-good {
+      color: #22c55e;
+    }
+
+    .max-ok {
+      color: #eab308;
+    }
+
+    .max-low {
+      color: #ef4444;
     }
 
     .submitter-section h2,

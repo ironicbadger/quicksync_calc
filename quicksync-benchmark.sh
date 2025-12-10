@@ -43,6 +43,8 @@ start(){
 
   show_gpu_warning
 
+  show_concurrency_prompt
+
   cleanup
 
   dep_check
@@ -101,6 +103,38 @@ show_gpu_warning(){
   echo ""
   read -p "Press Enter to continue or Ctrl+C to abort... "
   echo ""
+}
+
+show_concurrency_prompt(){
+  if [ "$SKIP_WARNINGS" -eq 1 ]; then
+    return 0
+  fi
+
+  if [ "$RUN_CONCURRENCY" -eq 1 ]; then
+    echo "======================================================="
+    echo "              CONCURRENCY TESTING"
+    echo "======================================================="
+    echo ""
+    echo "You've enabled concurrency testing with --concurrency"
+    echo ""
+    echo "This will test how many simultaneous video encodes"
+    echo "your CPU can handle while maintaining realtime speed."
+    echo ""
+    echo "  Standard benchmarks: ~5-10 minutes"
+    echo "  + Concurrency tests: ~15-30 minutes extra"
+    echo ""
+    echo "Total estimated time: 20-40 minutes"
+    echo ""
+    echo "======================================================="
+    echo ""
+    read -p "Continue with concurrency testing? (y/n): " confirm
+
+    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+      echo "Disabling concurrency tests. Run without --concurrency flag to skip this prompt."
+      RUN_CONCURRENCY=0
+    fi
+    echo ""
+  fi
 }
 
 dep_check(){
@@ -562,30 +596,67 @@ run_concurrency_tests(){
   # Initialize concurrency results array with header
   concurrency_arr=("CPU|TEST|FILE|1x|2x|3x|4x|5x|6x|7x|8x|9x|10x")
 
-  # Test H.264 1080p concurrency
-  echo "[1/2] H.264 1080p concurrency test"
-  find_max_concurrency "h264_1080p" "ribblehead_1080p_h264" 10
+  local test_num=0
+  local total_tests=5
 
-  # Build result line using global arrays set by find_max_concurrency
-  local h264_line="$cpu_model|h264_1080p|ribblehead_1080p_h264"
+  # Test H.264 1080p concurrency
+  test_num=$((test_num + 1))
+  echo "[$test_num/$total_tests] H.264 1080p concurrency test"
+  find_max_concurrency "h264_1080p" "ribblehead_1080p_h264" 10
+  local h264_1080p_line="$cpu_model|h264_1080p|ribblehead_1080p_h264"
   for speed in "${concurrency_speeds[@]}"; do
-    h264_line="$h264_line|$speed"
+    h264_1080p_line="$h264_1080p_line|$speed"
   done
-  concurrency_arr+=("$h264_line")
+  concurrency_arr+=("$h264_1080p_line")
   echo "  Max concurrent H.264 1080p: ${concurrency_max}x"
   echo ""
 
-  # Test HEVC 1080p concurrency
-  echo "[2/2] HEVC 1080p concurrency test"
-  find_max_concurrency "hevc_8bit" "ribblehead_1080p_hevc_8bit" 10
-
-  # Build result line using global arrays set by find_max_concurrency
-  local hevc_line="$cpu_model|hevc_8bit|ribblehead_1080p_hevc_8bit"
+  # Test H.264 4K concurrency
+  test_num=$((test_num + 1))
+  echo "[$test_num/$total_tests] H.264 4K concurrency test"
+  find_max_concurrency "h264_4k" "ribblehead_4k_h264" 10
+  local h264_4k_line="$cpu_model|h264_4k|ribblehead_4k_h264"
   for speed in "${concurrency_speeds[@]}"; do
-    hevc_line="$hevc_line|$speed"
+    h264_4k_line="$h264_4k_line|$speed"
   done
-  concurrency_arr+=("$hevc_line")
-  echo "  Max concurrent HEVC 1080p: ${concurrency_max}x"
+  concurrency_arr+=("$h264_4k_line")
+  echo "  Max concurrent H.264 4K: ${concurrency_max}x"
+  echo ""
+
+  # Test HEVC 8-bit 1080p concurrency
+  test_num=$((test_num + 1))
+  echo "[$test_num/$total_tests] HEVC 8-bit 1080p concurrency test"
+  find_max_concurrency "hevc_8bit" "ribblehead_1080p_hevc_8bit" 10
+  local hevc_8bit_line="$cpu_model|hevc_8bit|ribblehead_1080p_hevc_8bit"
+  for speed in "${concurrency_speeds[@]}"; do
+    hevc_8bit_line="$hevc_8bit_line|$speed"
+  done
+  concurrency_arr+=("$hevc_8bit_line")
+  echo "  Max concurrent HEVC 8-bit 1080p: ${concurrency_max}x"
+  echo ""
+
+  # Test HEVC 10-bit 4K concurrency
+  test_num=$((test_num + 1))
+  echo "[$test_num/$total_tests] HEVC 10-bit 4K concurrency test"
+  find_max_concurrency "hevc_4k_10bit" "ribblehead_4k_hevc_10bit" 10
+  local hevc_10bit_line="$cpu_model|hevc_4k_10bit|ribblehead_4k_hevc_10bit"
+  for speed in "${concurrency_speeds[@]}"; do
+    hevc_10bit_line="$hevc_10bit_line|$speed"
+  done
+  concurrency_arr+=("$hevc_10bit_line")
+  echo "  Max concurrent HEVC 10-bit 4K: ${concurrency_max}x"
+  echo ""
+
+  # Test H.264 1080p CPU baseline concurrency
+  test_num=$((test_num + 1))
+  echo "[$test_num/$total_tests] H.264 1080p CPU baseline concurrency test"
+  find_max_concurrency "h264_1080p_cpu" "ribblehead_1080p_h264" 10
+  local h264_cpu_line="$cpu_model|h264_1080p_cpu|ribblehead_1080p_h264"
+  for speed in "${concurrency_speeds[@]}"; do
+    h264_cpu_line="$h264_cpu_line|$speed"
+  done
+  concurrency_arr+=("$h264_cpu_line")
+  echo "  Max concurrent H.264 1080p CPU: ${concurrency_max}x"
   echo ""
 
   echo "======================================================="
@@ -601,6 +672,11 @@ run_concurrency_tests(){
 }
 
 upload_concurrency_results(){
+  if [ -z "$SUBMISSION_TOKEN" ]; then
+    echo "  No submission token available, skipping concurrency upload"
+    return
+  fi
+
   echo "Uploading concurrency results..."
 
   # Create temp file for submission data
@@ -608,13 +684,9 @@ upload_concurrency_results(){
   tmpfile=$(mktemp)
   printf '%s\n' "${concurrency_arr[@]}" > "$tmpfile"
 
-  # Upload to concurrency endpoint
+  # Upload to pending endpoint with token
   local response
-  local submit_url="${API_URL}/api/submit-concurrency"
-
-  if [ -n "${QUICKSYNC_ID:-}" ]; then
-    submit_url="${submit_url}?submitter_id=${QUICKSYNC_ID}"
-  fi
+  local submit_url="${API_URL}/api/submit/pending/${SUBMISSION_TOKEN}/concurrency"
 
   response=$(curl -s -X POST \
     -H "Content-Type: text/plain" \
@@ -628,9 +700,9 @@ upload_concurrency_results(){
   success=$(echo "$response" | grep -o '"success":true')
 
   if [ -n "$success" ]; then
-    local inserted
-    inserted=$(echo "$response" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')
-    echo "  Uploaded ${inserted:-0} concurrency result(s)"
+    local count
+    count=$(echo "$response" | sed -n 's/.*"concurrency_results_count":\([0-9]*\).*/\1/p')
+    echo "  Uploaded ${count:-0} concurrency result(s)"
   else
     local error_msg
     error_msg=$(echo "$response" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p')
@@ -724,14 +796,20 @@ main(){
   printf '%s\n' "${quicksyncstats_arr[@]}" | column -t -s '|'
   printf "\n"
 
+  # Upload standard results for web verification and get token (default behavior)
+  SUBMISSION_TOKEN=""
+  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
+    upload_standard_results_for_verification
+  fi
+
   # Run concurrency tests if --concurrency flag was passed
   if [ "$RUN_CONCURRENCY" -eq 1 ]; then
     run_concurrency_tests
   fi
 
-  # Upload results for web verification (default behavior)
-  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
-    upload_for_verification
+  # Show submission link after all tests complete
+  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ] && [ -n "$SUBMISSION_TOKEN" ]; then
+    show_submission_link
   fi
 
   #Unset Array
@@ -741,7 +819,7 @@ main(){
 
 }
 
-upload_for_verification(){
+upload_standard_results_for_verification(){
   echo "Uploading results for verification..."
 
   # Create temp file for submission data
@@ -759,29 +837,10 @@ upload_for_verification(){
   rm -f "$tmpfile"
 
   # Extract token from response
-  local token
-  token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+  SUBMISSION_TOKEN=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
-  if [ -n "$token" ]; then
-    # Build submission URL with optional ID
-    local submit_url="https://quicksync.ktz.me/submit?token=${token}"
-    if [ -n "${QUICKSYNC_ID:-}" ]; then
-      # URL-encode the ID (basic encoding for common characters)
-      local encoded_id
-      encoded_id=$(printf '%s' "$QUICKSYNC_ID" | sed 's/ /%20/g; s/!/%21/g; s/#/%23/g; s/\$/%24/g; s/&/%26/g; s/'\''/%27/g; s/(/%28/g; s/)/%29/g; s/+/%2B/g; s/,/%2C/g; s/:/%3A/g; s/;/%3B/g; s/=/%3D/g; s/?/%3F/g; s/@/%40/g')
-      submit_url="${submit_url}&id=${encoded_id}"
-    fi
-
-    echo ""
-    echo "================================================================"
-    echo ""
-    echo "  Submit your results at:"
-    echo ""
-    echo "    ${submit_url}"
-    echo ""
-    echo "  Link expires in 24 hours."
-    echo ""
-    echo "================================================================"
+  if [ -n "$SUBMISSION_TOKEN" ]; then
+    echo "  Standard results uploaded successfully"
   else
     echo ""
     echo "Could not upload results for verification."
@@ -794,6 +853,28 @@ upload_for_verification(){
       echo "Error: $error_msg"
     fi
   fi
+}
+
+show_submission_link(){
+  # Build submission URL with optional ID
+  local submit_url="https://quicksync.ktz.me/submit?token=${SUBMISSION_TOKEN}"
+  if [ -n "${QUICKSYNC_ID:-}" ]; then
+    # URL-encode the ID (basic encoding for common characters)
+    local encoded_id
+    encoded_id=$(printf '%s' "$QUICKSYNC_ID" | sed 's/ /%20/g; s/!/%21/g; s/#/%23/g; s/\$/%24/g; s/&/%26/g; s/'\''/%27/g; s/(/%28/g; s/)/%29/g; s/+/%2B/g; s/,/%2C/g; s/:/%3A/g; s/;/%3B/g; s/=/%3D/g; s/?/%3F/g; s/@/%40/g')
+    submit_url="${submit_url}&id=${encoded_id}"
+  fi
+
+  echo ""
+  echo "================================================================"
+  echo ""
+  echo "  Submit your results at:"
+  echo ""
+  echo "    ${submit_url}"
+  echo ""
+  echo "  Link expires in 24 hours."
+  echo ""
+  echo "================================================================"
 }
 
 start
