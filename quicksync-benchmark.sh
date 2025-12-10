@@ -672,6 +672,11 @@ run_concurrency_tests(){
 }
 
 upload_concurrency_results(){
+  if [ -z "$SUBMISSION_TOKEN" ]; then
+    echo "  No submission token available, skipping concurrency upload"
+    return
+  fi
+
   echo "Uploading concurrency results..."
 
   # Create temp file for submission data
@@ -679,13 +684,9 @@ upload_concurrency_results(){
   tmpfile=$(mktemp)
   printf '%s\n' "${concurrency_arr[@]}" > "$tmpfile"
 
-  # Upload to concurrency endpoint
+  # Upload to pending endpoint with token
   local response
-  local submit_url="${API_URL}/api/submit-concurrency"
-
-  if [ -n "${QUICKSYNC_ID:-}" ]; then
-    submit_url="${submit_url}?submitter_id=${QUICKSYNC_ID}"
-  fi
+  local submit_url="${API_URL}/api/submit/pending/${SUBMISSION_TOKEN}/concurrency"
 
   response=$(curl -s -X POST \
     -H "Content-Type: text/plain" \
@@ -699,9 +700,9 @@ upload_concurrency_results(){
   success=$(echo "$response" | grep -o '"success":true')
 
   if [ -n "$success" ]; then
-    local inserted
-    inserted=$(echo "$response" | sed -n 's/.*"inserted":\([0-9]*\).*/\1/p')
-    echo "  Uploaded ${inserted:-0} concurrency result(s)"
+    local count
+    count=$(echo "$response" | sed -n 's/.*"concurrency_results_count":\([0-9]*\).*/\1/p')
+    echo "  Uploaded ${count:-0} concurrency result(s)"
   else
     local error_msg
     error_msg=$(echo "$response" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p')
@@ -795,14 +796,20 @@ main(){
   printf '%s\n' "${quicksyncstats_arr[@]}" | column -t -s '|'
   printf "\n"
 
+  # Upload standard results for web verification and get token (default behavior)
+  SUBMISSION_TOKEN=""
+  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
+    upload_standard_results_for_verification
+  fi
+
   # Run concurrency tests if --concurrency flag was passed
   if [ "$RUN_CONCURRENCY" -eq 1 ]; then
     run_concurrency_tests
   fi
 
-  # Upload results for web verification (default behavior)
-  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
-    upload_for_verification
+  # Show submission link after all tests complete
+  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ] && [ -n "$SUBMISSION_TOKEN" ]; then
+    show_submission_link
   fi
 
   #Unset Array
@@ -812,7 +819,7 @@ main(){
 
 }
 
-upload_for_verification(){
+upload_standard_results_for_verification(){
   echo "Uploading results for verification..."
 
   # Create temp file for submission data
@@ -830,29 +837,10 @@ upload_for_verification(){
   rm -f "$tmpfile"
 
   # Extract token from response
-  local token
-  token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+  SUBMISSION_TOKEN=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
-  if [ -n "$token" ]; then
-    # Build submission URL with optional ID
-    local submit_url="https://quicksync.ktz.me/submit?token=${token}"
-    if [ -n "${QUICKSYNC_ID:-}" ]; then
-      # URL-encode the ID (basic encoding for common characters)
-      local encoded_id
-      encoded_id=$(printf '%s' "$QUICKSYNC_ID" | sed 's/ /%20/g; s/!/%21/g; s/#/%23/g; s/\$/%24/g; s/&/%26/g; s/'\''/%27/g; s/(/%28/g; s/)/%29/g; s/+/%2B/g; s/,/%2C/g; s/:/%3A/g; s/;/%3B/g; s/=/%3D/g; s/?/%3F/g; s/@/%40/g')
-      submit_url="${submit_url}&id=${encoded_id}"
-    fi
-
-    echo ""
-    echo "================================================================"
-    echo ""
-    echo "  Submit your results at:"
-    echo ""
-    echo "    ${submit_url}"
-    echo ""
-    echo "  Link expires in 24 hours."
-    echo ""
-    echo "================================================================"
+  if [ -n "$SUBMISSION_TOKEN" ]; then
+    echo "  Standard results uploaded successfully"
   else
     echo ""
     echo "Could not upload results for verification."
@@ -865,6 +853,28 @@ upload_for_verification(){
       echo "Error: $error_msg"
     fi
   fi
+}
+
+show_submission_link(){
+  # Build submission URL with optional ID
+  local submit_url="https://quicksync.ktz.me/submit?token=${SUBMISSION_TOKEN}"
+  if [ -n "${QUICKSYNC_ID:-}" ]; then
+    # URL-encode the ID (basic encoding for common characters)
+    local encoded_id
+    encoded_id=$(printf '%s' "$QUICKSYNC_ID" | sed 's/ /%20/g; s/!/%21/g; s/#/%23/g; s/\$/%24/g; s/&/%26/g; s/'\''/%27/g; s/(/%28/g; s/)/%29/g; s/+/%2B/g; s/,/%2C/g; s/:/%3A/g; s/;/%3B/g; s/=/%3D/g; s/?/%3F/g; s/@/%40/g')
+    submit_url="${submit_url}&id=${encoded_id}"
+  fi
+
+  echo ""
+  echo "================================================================"
+  echo ""
+  echo "  Submit your results at:"
+  echo ""
+  echo "    ${submit_url}"
+  echo ""
+  echo "  Link expires in 24 hours."
+  echo ""
+  echo "================================================================"
 }
 
 start
