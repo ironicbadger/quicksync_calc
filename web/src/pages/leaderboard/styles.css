@@ -1,0 +1,264 @@
+.page-leaderboard .container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+
+  .page-leaderboard .page-header {
+    margin-bottom: 2rem;
+  }
+
+  .page-leaderboard .page-header h1 {
+    font-size: 1.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .page-leaderboard .subtitle {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+  }
+
+  .page-leaderboard .controls {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .page-leaderboard .control-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .page-leaderboard .control-group label {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  .page-leaderboard .control-group select {
+    padding: 0.375rem 0.75rem;
+    background-color: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+  }
+
+  .page-leaderboard .leaderboard-card {
+    background-color: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+
+  .page-leaderboard #leaderboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    table-layout: fixed;
+  }
+
+  .page-leaderboard #leaderboard-table th, .page-leaderboard #leaderboard-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  .page-leaderboard #leaderboard-table th {
+    border-bottom: 2px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .page-leaderboard #leaderboard-table td {
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .page-leaderboard #leaderboard-table th.numeric, .page-leaderboard #leaderboard-table td.numeric {
+    text-align: right;
+  }
+
+  .page-leaderboard #leaderboard-table tbody tr:hover {
+    background-color: rgba(59, 130, 246, 0.1);
+  }
+
+  .page-leaderboard .loading-cell {
+    text-align: center;
+    padding: 3rem 1rem !important;
+    color: var(--color-text-muted);
+  }
+
+  .page-leaderboard .show-more-container {
+    padding: 1rem;
+    text-align: center;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .page-leaderboard .show-more-btn {
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    padding: 0.5rem 1.5rem;
+    border-radius: 0.375rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
+  }
+
+  .page-leaderboard .show-more-btn:hover {
+    background-color: var(--color-bg-secondary);
+    border-color: var(--color-accent);
+  }
+
+  .page-leaderboard .rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+
+  .page-leaderboard .rank-1 {
+    background: linear-gradient(135deg, #ffd700, #ffb800);
+    color: #000;
+  }
+
+  .page-leaderboard .rank-2 {
+    background: linear-gradient(135deg, #c0c0c0, #a0a0a0);
+    color: #000;
+  }
+
+  .page-leaderboard .rank-3 {
+    background: linear-gradient(135deg, #cd7f32, #b87333);
+    color: #fff;
+  }
+
+  .page-leaderboard .rank-other {
+    background-color: var(--color-bg);
+    color: var(--color-text-muted);
+  }
+
+  .page-leaderboard .score-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    min-width: 2rem;
+    text-align: center;
+  }
+
+  .page-leaderboard .score-badge.score-high {
+    background-color: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+  }
+
+  .page-leaderboard .score-badge.score-mid {
+    background-color: rgba(234, 179, 8, 0.2);
+    color: #eab308;
+  }
+
+  .page-leaderboard .score-badge.score-low {
+    background-color: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+  }
+
+  .page-leaderboard .cpu-name {
+    font-weight: 500;
+  }
+
+  .page-leaderboard .cpu-link {
+    color: var(--color-text);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+
+  .page-leaderboard .cpu-link:hover {
+    color: var(--color-accent);
+    text-decoration: underline;
+  }
+
+  /* Methodology Section */
+  .page-leaderboard .methodology-section {
+    margin-top: 3rem;
+  }
+
+  .page-leaderboard .methodology-section h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--color-text);
+  }
+
+  .page-leaderboard .methodology-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .page-leaderboard .methodology-card {
+    background-color: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+
+  .page-leaderboard .methodology-card h3 {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+    color: var(--color-text);
+  }
+
+  .page-leaderboard .methodology-card p {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    line-height: 1.6;
+    margin-bottom: 0.5rem;
+  }
+
+  .page-leaderboard .methodology-card p:last-child {
+    margin-bottom: 0;
+  }
+
+  .page-leaderboard .methodology-card a {
+    color: var(--color-accent);
+  }
+
+  .page-leaderboard .weight-badge {
+    display: inline-block;
+    background-color: var(--color-accent);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+
+  .page-leaderboard .formula {
+    display: block;
+    background-color: var(--color-bg);
+    padding: 0.75rem 1rem;
+    border-radius: 0.375rem;
+    margin: 0.75rem 0;
+    font-size: 0.8rem;
+    overflow-x: auto;
+  }
+
+  @media (max-width: 768px) {
+    .page-leaderboard #leaderboard-table th:nth-child(3), .page-leaderboard #leaderboard-table td:nth-child(3), .page-leaderboard #leaderboard-table colgroup col:nth-child(3) {
+      display: none;
+    }
+
+    .page-leaderboard .methodology-grid {
+      grid-template-columns: 1fr;
+    }
+  }

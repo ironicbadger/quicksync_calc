@@ -59,7 +59,7 @@ Command: `nvidia-smi dmon -s p -d 1`
 | File | Action | Description |
 |------|--------|-------------|
 | `nvenc-benchmark.sh` | **Create** | Main NVIDIA benchmark script |
-| `web/src/pages/nvenc.astro` | **Create** | NVIDIA landing page |
+| `web/src/pages/nvenc/NvencPage.tsx` | **Create** | NVIDIA landing page |
 | `api/src/lib/gpu-parser.ts` | **Create** | NVIDIA GPU pattern matching |
 | `scripts/seed-nvidia-architectures.sql` | **Create** | NVIDIA GPU architecture patterns |
 | `api/src/lib/parser.ts` | Modify | Auto-detect vendor from GPU string |
