@@ -7,6 +7,9 @@ import { ConcurrencyChart } from '../../components/charts/ConcurrencyChart'
 import { useBenchmarkData } from '../../app/BenchmarkDataProvider'
 import type { BenchmarkResult } from '../../app/types'
 import { useDocumentTitle } from '../../layout/useDocumentTitle'
+import { CpuComparisonPanel } from './CpuComparisonPanel'
+import { GenerationComparisonPanel } from './GenerationComparisonPanel'
+import { computeCpuComparisonData, computeGenerationComparisonData } from '../../utils/comparisons'
 import {
   EMPTY_FILTERS,
   calculateOverallCpuScoreMap,
@@ -143,7 +146,34 @@ export function HomePage() {
   const cpuScores = useMemo(() => (readyData ? calculateOverallCpuScoreMap(readyData) : {}), [readyData])
 
   const filteredResults = useMemo(() => (readyData ? filterResults(readyData, filters) : []), [filters, readyData])
-  const filterCounts = useMemo(() => (readyData ? computeFilterCounts(readyData, filteredResults) : null), [filteredResults, readyData])
+  const filterCounts = useMemo(() => {
+    if (!readyData) return null
+
+    const noGen = computeFilterCounts(readyData, filterResults(readyData, { ...filters, generation: [] }))
+    const noArch = computeFilterCounts(readyData, filterResults(readyData, { ...filters, architecture: [] }))
+    const noTest = computeFilterCounts(readyData, filterResults(readyData, { ...filters, test: [] }))
+    const noCpu = computeFilterCounts(readyData, filterResults(readyData, { ...filters, cpu: [] }))
+    const noSubmitter = computeFilterCounts(readyData, filterResults(readyData, { ...filters, submitter: [] }))
+    const noEcc = computeFilterCounts(readyData, filterResults(readyData, { ...filters, ecc: [] }))
+
+    return {
+      generations: noGen.generations,
+      architectures: noArch.architectures,
+      tests: noTest.tests,
+      cpus: noCpu.cpus,
+      submitters: noSubmitter.submitters,
+      ecc: noEcc.ecc,
+    }
+  }, [filters, readyData])
+
+  const generationComparison = useMemo(() => {
+    if (!readyData) return null
+    const comparisonPool = filterResults(readyData, { ...filters, generation: [] })
+    const baselinePool = filterResults(readyData, { ...filters, generation: [], architecture: [] })
+    return computeGenerationComparisonData(comparisonPool, filters.generation, filters.architecture, baselinePool)
+  }, [filters, readyData])
+
+  const cpuComparison = useMemo(() => (readyData ? computeCpuComparisonData(filteredResults, filters.cpu) : null), [filteredResults, filters.cpu, readyData])
 
   const displayedResults = useMemo(() => {
     if (!readyData) return { total: 0, page: 1, totalPages: 1, rows: [] as BenchmarkResult[] }
@@ -206,25 +236,36 @@ export function HomePage() {
     if (!filterCounts) return []
     const searchLower = cpuSearch.trim().toLowerCase()
 
+    const selectedEntries = filters.cpu.map((cpu) => [cpu, filterCounts.cpus[cpu] || 0] as const)
+
     const entries = Object.entries(filterCounts.cpus)
+      .filter(([cpu]) => !filters.cpu.includes(cpu))
       .filter(([cpu]) => {
         if (!searchLower) return true
         return cpu.toLowerCase().includes(searchLower) || stripIntelBranding(cpu).toLowerCase().includes(searchLower)
       })
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 50)
 
-    return entries
-  }, [cpuSearch, filterCounts])
+    const limit = Math.max(50, selectedEntries.length)
+    const combined = [...selectedEntries, ...entries].slice(0, limit)
+
+    return combined
+  }, [cpuSearch, filterCounts, filters.cpu])
 
   const submitterEntries = useMemo(() => {
     if (!filterCounts) return []
     const searchLower = submitterSearch.trim().toLowerCase()
-    return Object.entries(filterCounts.submitters)
+
+    const selectedEntries = filters.submitter.map((submitter) => [submitter, filterCounts.submitters[submitter] || 0] as const)
+
+    const entries = Object.entries(filterCounts.submitters)
+      .filter(([submitter]) => !filters.submitter.includes(submitter))
       .filter(([submitter]) => submitter.toLowerCase().includes(searchLower))
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 30)
-  }, [filterCounts, submitterSearch])
+
+    const limit = Math.max(30, selectedEntries.length)
+    return [...selectedEntries, ...entries].slice(0, limit)
+  }, [filterCounts, filters.submitter, submitterSearch])
 
   const boxplot = useMemo(() => {
     if (!readyData) return null
@@ -533,6 +574,9 @@ export function HomePage() {
               </>
             )}
           </div>
+
+          {state.status === 'ready' && generationComparison ? <GenerationComparisonPanel comparison={generationComparison} /> : null}
+          {state.status === 'ready' && cpuComparison ? <CpuComparisonPanel comparison={cpuComparison} /> : null}
 
           {hasConcurrency && concurrencyLeaderboards ? (
             <div id="concurrency-section" className="concurrency-section">

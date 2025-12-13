@@ -16,6 +16,7 @@ web/.env.local
 web/.env.production
 
 .playwright-mcp/
+.worktrees/
 
 benchmark_results.json
 benchmarks*.json

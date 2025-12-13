@@ -82,7 +82,7 @@ export function filterResults(data: BenchmarkData, filters: Filters): BenchmarkR
       const gen = String(r.cpu_generation)
       const isUltra1 = r.architecture === 'Meteor Lake' || r.architecture === 'Lunar Lake'
       const isUltra2 = r.architecture === 'Arrow Lake'
-      const isArc = r.architecture === 'Alchemist' || r.architecture === 'Battlemage'
+      const isArc = r.architecture === 'Alchemist' || r.architecture === 'Battlemage' || r.architecture === 'Arc Alchemist'
 
       const matchesGen = filters.generation.includes(gen)
       const matchesUltra1 = filters.generation.includes('ultra-1') && isUltra1
@@ -127,7 +127,7 @@ export function computeFilterOptions(data: BenchmarkData) {
     if (r.cpu_generation !== null) generations.add(String(r.cpu_generation))
     if (r.architecture === 'Meteor Lake' || r.architecture === 'Lunar Lake') generations.add('ultra-1')
     if (r.architecture === 'Arrow Lake') generations.add('ultra-2')
-    if (r.architecture === 'Alchemist' || r.architecture === 'Battlemage') generations.add('arc')
+    if (r.architecture === 'Alchemist' || r.architecture === 'Battlemage' || r.architecture === 'Arc Alchemist') generations.add('arc')
     if (r.architecture) architectures.add(r.architecture)
     if (r.test_name) tests.add(r.test_name)
   }
@@ -166,7 +166,7 @@ export function computeFilterCounts(data: BenchmarkData, filtered: BenchmarkResu
 
     if (r.architecture === 'Meteor Lake' || r.architecture === 'Lunar Lake') generations['ultra-1'] = (generations['ultra-1'] || 0) + 1
     if (r.architecture === 'Arrow Lake') generations['ultra-2'] = (generations['ultra-2'] || 0) + 1
-    if (r.architecture === 'Alchemist' || r.architecture === 'Battlemage') generations.arc = (generations.arc || 0) + 1
+    if (r.architecture === 'Alchemist' || r.architecture === 'Battlemage' || r.architecture === 'Arc Alchemist') generations.arc = (generations.arc || 0) + 1
 
     if (r.architecture) architectures[r.architecture] = (architectures[r.architecture] || 0) + 1
     tests[r.test_name] = (tests[r.test_name] || 0) + 1
@@ -416,7 +416,7 @@ export function computeBoxplotData(
 
     if (r.architecture === 'Meteor Lake' || r.architecture === 'Lunar Lake') groupKey = 'U1'
     else if (r.architecture === 'Arrow Lake') groupKey = 'U2'
-    else if (r.architecture === 'Alchemist' || r.architecture === 'Battlemage') groupKey = 'Arc'
+    else if (r.architecture === 'Alchemist' || r.architecture === 'Battlemage' || r.architecture === 'Arc Alchemist') groupKey = 'Arc'
     else if (r.cpu_generation !== null) groupKey = String(r.cpu_generation)
 
     if (!groupKey) continue
@@ -441,7 +441,7 @@ export function computeConcurrencyByGenAndTest(concurrencyResults: ConcurrencyRe
     let groupKey: string | null = null
     if (r.architecture === 'Meteor Lake' || r.architecture === 'Lunar Lake') groupKey = 'U1'
     else if (r.architecture === 'Arrow Lake') groupKey = 'U2'
-    else if (r.architecture === 'Alchemist' || r.architecture === 'Battlemage') groupKey = 'Arc'
+    else if (r.architecture === 'Alchemist' || r.architecture === 'Battlemage' || r.architecture === 'Arc Alchemist') groupKey = 'Arc'
     else if (r.cpu_generation !== null) groupKey = String(r.cpu_generation)
     if (!groupKey) continue
 
@@ -452,4 +452,3 @@ export function computeConcurrencyByGenAndTest(concurrencyResults: ConcurrencyRe
 
   return byGenAndTest
 }
-
