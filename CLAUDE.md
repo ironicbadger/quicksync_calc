@@ -62,7 +62,7 @@ flowchart TB
         G[(benchmarks.json)]
     end
 
-    subgraph Website["Astro Static Site"]
+    subgraph Website["Vite + React Static Site"]
         J[Interactive Charts]
         K[Filter Controls]
         L[Results Table]
@@ -94,7 +94,7 @@ flowchart TB
 |-----------|------------|-----|
 | Storage | Cloudflare R2 | Free tier, global edge, simple JSON storage |
 | API | Cloudflare Workers | Free tier, global edge, native R2 support |
-| Frontend | Astro + Chart.js | Static-first, interactive charts, simple |
+| Frontend | React 19 + Vite 7 + Chart.js | Fast SPA, predictable state, no imperative DOM |
 | Hosting | Cloudflare Pages | Free, global CDN, custom domain support |
 
 ### Storage: Cloudflare R2
@@ -246,22 +246,18 @@ quicksync_calc/
 │           ├── cpu-parser.ts         # Extract CPU info
 │           └── validation.ts         # Input validation
 │
-├── web/                              # Astro static site
-│   ├── astro.config.mjs
+├── web/                              # Vite + React static site (Cloudflare Pages)
+│   ├── vite.config.ts
 │   ├── package.json
+│   ├── public/
+│   │   ├── _redirects               # SPA routing fallback
+│   │   └── test-data.json           # Optional local dev dataset
 │   └── src/
-│       ├── pages/
-│       │   ├── index.astro           # Main dashboard
-│       │   └── about.astro           # Instructions
-│       ├── components/
-│       │   ├── FilterControls.astro
-│       │   ├── ResultsTable.astro
-│       │   └── charts/
-│       │       ├── FpsBoxplot.tsx
-│       │       ├── EfficiencyChart.tsx
-│       │       └── ConcurrencyHeatmap.tsx
-│       └── layouts/
-│           └── Layout.astro
+│       ├── app/                     # Routes + data provider
+│       ├── layout/                  # Layout + global styles
+│       ├── pages/                   # Route components
+│       ├── components/              # Shared UI components
+│       └── utils/                   # Pure data transforms/scoring
 │
 ├── scripts/
 │   ├── migrate-gist-data.py          # One-time migration
@@ -283,7 +279,7 @@ quicksync_calc/
 ### Completed
 - ✅ Cloudflare R2 storage for benchmark data
 - ✅ Cloudflare Worker API with submit/results endpoints
-- ✅ Astro static site with interactive charts
+- ✅ Vite + React static site with interactive charts
 - ✅ CPU generation pages with architecture details
 - ✅ Concurrency benchmark support
 - ✅ Cloudflare Pages deployment
@@ -493,4 +489,5 @@ The `submitter_id` field in the JSON schema is user-provided, optional, and not 
 - [Intel Core Ultra Naming](https://www.intel.com/content/www/us/en/support/articles/000097596/processors/intel-core-ultra-processors.html)
 - [Cloudflare R2](https://developers.cloudflare.com/r2/)
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/)
-- [Astro Documentation](https://docs.astro.build/)
+- [Vite Documentation](https://vite.dev/)
+- [React Documentation](https://react.dev/)

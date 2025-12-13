@@ -146,7 +146,7 @@ interface BenchmarkData {
 | api/src/lib/r2.ts | Add ConcurrencyResult interface |
 | api/src/routes/submit.ts | Accept concurrency results |
 | web/src/lib/dataLoader.ts | Load concurrency data |
-| web/src/pages/index.astro | Display concurrency leaderboard |
+| web/src/pages/home/HomePage.tsx | Display concurrency leaderboard |
 
 ---
 

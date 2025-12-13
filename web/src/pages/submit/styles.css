@@ -1,0 +1,299 @@
+.page-submit .submit-page {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .page-submit .state-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 400px;
+      text-align: center;
+      gap: 1rem;
+    }
+
+    .page-submit .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--color-border);
+      border-top-color: var(--color-accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .page-submit .error-icon {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      font-weight: bold;
+    }
+
+    .page-submit .success-icon {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+    }
+
+    .page-submit .state-container h2 {
+      font-size: 1.5rem;
+      margin: 0;
+    }
+
+    .page-submit .state-container p {
+      color: var(--color-text-muted);
+      margin: 0;
+    }
+
+    .page-submit .page-header {
+      margin-bottom: 2rem;
+    }
+
+    .page-submit .page-header h1 {
+      font-size: 1.75rem;
+      margin: 0 0 0.5rem;
+    }
+
+    .page-submit .subtitle {
+      color: var(--color-text-muted);
+      margin: 0;
+    }
+
+    .page-submit .card {
+      margin-bottom: 1.5rem;
+    }
+
+    .page-submit .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .page-submit .card h2 {
+      font-size: 1.125rem;
+      margin: 0;
+    }
+
+    .page-submit .results-meta {
+      font-size: 0.875rem;
+      color: var(--color-text-muted);
+    }
+
+    .page-submit .table-wrapper {
+      overflow-x: auto;
+    }
+
+    .page-submit .results-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    .page-submit .results-table th {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-text-muted);
+      border-bottom: 1px solid var(--color-border);
+      white-space: nowrap;
+    }
+
+    .page-submit .results-table td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .page-submit .results-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .page-submit .metric-cell {
+      font-family: var(--font-mono);
+      text-align: right;
+    }
+
+    .page-submit .test-badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .page-submit .test-h264 {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+    }
+
+    .page-submit .test-hevc {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+    }
+
+    .page-submit .test-other {
+      background: rgba(148, 163, 184, 0.15);
+      color: #94a3b8;
+    }
+
+    /* Concurrency table styles */
+    .page-submit .concurrency-table th {
+      font-size: 0.7rem;
+      padding: 0.75rem 0.5rem;
+    }
+
+    .page-submit .concurrency-table td {
+      padding: 0.75rem 0.5rem;
+      font-size: 0.8rem;
+    }
+
+    .page-submit .speed-good {
+      color: #22c55e;
+    }
+
+    .page-submit .speed-warn {
+      color: #eab308;
+    }
+
+    .page-submit .speed-na {
+      color: var(--color-text-muted);
+    }
+
+    .page-submit .max-concurrency {
+      font-weight: 600;
+    }
+
+    .page-submit .max-good {
+      color: #22c55e;
+    }
+
+    .page-submit .max-ok {
+      color: #eab308;
+    }
+
+    .page-submit .max-low {
+      color: #ef4444;
+    }
+
+    .page-submit .submitter-section h2, .page-submit .captcha-section h2 {
+      margin-bottom: 0.5rem;
+    }
+
+    .page-submit .optional-label {
+      font-weight: 400;
+      font-size: 0.875rem;
+      color: var(--color-text-muted);
+    }
+
+    .page-submit .field-description {
+      font-size: 0.875rem;
+      color: var(--color-text-muted);
+      margin: 0 0 1rem;
+    }
+
+    .page-submit .text-input {
+      width: 100%;
+      max-width: 400px;
+      padding: 0.75rem 1rem;
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: 0.5rem;
+      color: var(--color-text);
+      font-size: 1rem;
+    }
+
+    .page-submit .text-input:focus {
+      outline: none;
+      border-color: var(--color-accent);
+    }
+
+    .page-submit .text-input::placeholder {
+      color: var(--color-text-muted);
+    }
+
+    .page-submit .turnstile-widget {
+      min-height: 65px;
+    }
+
+    .page-submit .captcha-error {
+      color: #ef4444;
+      font-size: 0.875rem;
+      margin-top: 0.5rem;
+    }
+
+    .page-submit .submit-section {
+      margin-top: 2rem;
+    }
+
+    .page-submit .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .page-submit .btn-primary {
+      background: var(--color-accent);
+      color: white;
+    }
+
+    .page-submit .btn-primary:hover:not(:disabled) {
+      background: var(--color-accent-hover);
+    }
+
+    .page-submit .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .page-submit .btn-large {
+      padding: 1rem 2rem;
+      font-size: 1.125rem;
+    }
+
+    .page-submit .btn-spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @media (max-width: 600px) {
+      .page-submit .results-table th, .page-submit .results-table td {
+        padding: 0.5rem 0.75rem;
+      }
+
+      .page-submit .text-input {
+        max-width: none;
+      }
+    }
