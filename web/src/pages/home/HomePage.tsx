@@ -169,7 +169,7 @@ export function HomePage() {
   const generationComparison = useMemo(() => {
     if (!readyData) return null
     const comparisonPool = filterResults(readyData, { ...filters, generation: [] })
-    const baselinePool = filterResults(readyData, { ...filters, generation: [], architecture: [] })
+    const baselinePool = filterResults(readyData, { ...filters, generation: [], architecture: [], submitter: [], cpu: [] })
     return computeGenerationComparisonData(comparisonPool, filters.generation, filters.architecture, baselinePool)
   }, [filters, readyData])
 

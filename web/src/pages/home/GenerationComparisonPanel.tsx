@@ -71,7 +71,7 @@ export function GenerationComparisonPanel({ comparison }: { comparison: Generati
   const totalResults = comparison.groups.reduce((sum, g) => sum + g.overall.total_results, 0)
   const totalUniqueCpus = comparison.groups.reduce((sum, g) => sum + g.overall.unique_cpus, 0)
 
-  const baselineFps = comparison.baseline_overall?.avg_fps ?? 0
+  const baselineFps = comparison.baseline_overall?.avg_fps ?? null
   const baselineWatts = comparison.baseline_overall?.avg_watts ?? null
   const baselineEff = comparison.baseline_overall?.fps_per_watt ?? null
 
@@ -186,7 +186,7 @@ export function GenerationComparisonPanel({ comparison }: { comparison: Generati
                     <span className="gen-arch baseline-tag">Baseline</span>
                   </td>
                   <td className="gen-metric">
-                    <span className="gen-value">{baselineFps.toFixed(1)}</span>
+                    <span className="gen-value">{baselineFps !== null ? baselineFps.toFixed(1) : '-'}</span>
                   </td>
                   <td className="gen-metric">
                     <span className="gen-value">{baselineWatts !== null ? baselineWatts.toFixed(1) : '-'}</span>
