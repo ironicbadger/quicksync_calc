@@ -148,12 +148,12 @@ export function SubmitPage() {
     setTurnstileToken(null)
 
     const container = document.getElementById('turnstile-container')
-    container?.replaceChildren()
+	    container?.replaceChildren()
 
-    const ensureScript = () => {
-      const existing = document.querySelector<HTMLScriptElement>('script[src=\"https://challenges.cloudflare.com/turnstile/v0/api.js\"]')
-      if (existing) return
-      const script = document.createElement('script')
+	    const ensureScript = () => {
+	      const existing = document.querySelector<HTMLScriptElement>('script[src="https://challenges.cloudflare.com/turnstile/v0/api.js"]')
+	      if (existing) return
+	      const script = document.createElement('script')
       script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
       script.async = true
       script.defer = true
@@ -435,7 +435,12 @@ export function SubmitPage() {
             </div>
 
             <div className="submit-section">
-              <button id="submit-btn" className="btn btn-primary btn-large" disabled={!turnstileToken || isSubmitting} onClick={handleSubmit}>
+              <button
+                id="submit-btn"
+                className="btn btn-primary btn-large"
+                disabled={!turnstileToken || isSubmitting}
+                onClick={() => void handleSubmit()}
+              >
                 <span id="submit-text">{isSubmitting ? 'Submitting...' : turnstileToken ? 'Submit Results' : 'Complete Verification Above'}</span>
                 {isSubmitting ? <span id="submit-spinner" className="btn-spinner" /> : null}
               </button>

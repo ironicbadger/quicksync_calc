@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { CpuNameLink } from '../../components/CpuNameLink'
 import { ScoreBadge } from '../../components/ScoreBadge'
-import { useBenchmarkData } from '../../app/BenchmarkDataProvider'
+import { useBenchmarkData } from '../../app/useBenchmarkData'
 import { useDocumentTitle } from '../../layout/useDocumentTitle'
 import { calculateOverallCpuScores } from '../../utils/quicksync'
 import './styles.css'

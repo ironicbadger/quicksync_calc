@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ScoreBadge } from '../../components/ScoreBadge'
-import { useBenchmarkData } from '../../app/BenchmarkDataProvider'
+import { useBenchmarkData } from '../../app/useBenchmarkData'
 import type { BenchmarkData, BenchmarkResult, CpuArchitecture } from '../../app/types'
 import { useDocumentTitle } from '../../layout/useDocumentTitle'
 import { ChartJS } from '../../utils/chartjs'
@@ -84,19 +84,17 @@ type GenData = {
   baseline_by_test: Array<{ test_name: string; avg_fps: number; avg_watts: number; fps_per_watt: number }>
   cpu_models: CpuModelStats[]
   arch_variants: Array<{
-    igpu_name: string | null
-    igpu_codename: string | null
-    igpu_base_mhz?: number | null
-    igpu_boost_mhz?: number | null
-    process_nm: string | null
+    igpu_name: string
+    igpu_codename: string
+    process_nm: string
     max_p_cores: number | null
     max_e_cores: number | null
-    tdp_range: string | null
-    die_layout: string | null
-    gpu_eu_count: string | null
+    tdp_range: string
+    die_layout: string
+    gpu_eu_count: string
     release_year: number
-    release_quarter: number | null
-    codename: string | null
+    release_quarter: number
+    codename: string
     pattern: string
     tested_cpus: string[]
   }>
@@ -121,11 +119,11 @@ function getGenerationDetail(data: BenchmarkData, genId: string): GenData | null
   const archData = allArchData[0]
 
   const codecSupport = {
-    h264_encode: archData?.h264_encode ?? true,
-    hevc_8bit_encode: archData?.hevc_8bit_encode ?? false,
-    hevc_10bit_encode: archData?.hevc_10bit_encode ?? false,
-    vp9_encode: archData?.vp9_encode ?? false,
-    av1_encode: archData?.av1_encode ?? false,
+    h264_encode: archData ? archData.h264_encode === 1 : true,
+    hevc_8bit_encode: archData ? archData.hevc_8bit_encode === 1 : false,
+    hevc_10bit_encode: archData ? archData.hevc_10bit_encode === 1 : false,
+    vp9_encode: archData ? archData.vp9_encode === 1 : false,
+    av1_encode: archData ? archData.av1_encode === 1 : false,
   }
 
   const uniqueCpus = new Set(genResults.map((r) => r.cpu_raw))
@@ -221,15 +219,13 @@ function getGenerationDetail(data: BenchmarkData, genId: string): GenData | null
       }
     }
 
-    return {
-      igpu_name: arch.igpu_name,
-      igpu_codename: arch.igpu_codename,
-      igpu_base_mhz: arch.igpu_base_mhz ?? null,
-      igpu_boost_mhz: arch.igpu_boost_mhz ?? null,
-      process_nm: arch.process_nm,
-      max_p_cores: arch.max_p_cores,
-      max_e_cores: arch.max_e_cores,
-      tdp_range: arch.tdp_range,
+	    return {
+	      igpu_name: arch.igpu_name,
+	      igpu_codename: arch.igpu_codename,
+	      process_nm: arch.process_nm,
+	      max_p_cores: arch.max_p_cores,
+	      max_e_cores: arch.max_e_cores,
+	      tdp_range: arch.tdp_range,
       die_layout: arch.die_layout,
       gpu_eu_count: arch.gpu_eu_count,
       release_year: arch.release_year,
@@ -410,7 +406,7 @@ export function CpuGenPage() {
   const prevGen = currentIdx > 0 ? allGens[currentIdx - 1] : null
   const nextGen = currentIdx >= 0 && currentIdx < allGens.length - 1 ? allGens[currentIdx + 1] : null
 
-  const charts = useGenCharts(genId, genData)
+  const { fpsRef, wattsRef, effRef } = useGenCharts(genId, genData)
 
   if (state.status === 'loading') {
     return (
@@ -624,13 +620,13 @@ export function CpuGenPage() {
 
               <div className="tldr-comparison-charts" id="charts-container">
                 <div className="tldr-chart-container">
-                  <canvas id="gen-fps-chart" ref={charts.fpsRef} />
+                  <canvas id="gen-fps-chart" ref={fpsRef} />
                 </div>
                 <div className="tldr-chart-container">
-                  <canvas id="gen-watts-chart" ref={charts.wattsRef} />
+                  <canvas id="gen-watts-chart" ref={wattsRef} />
                 </div>
                 <div className="tldr-chart-container">
-                  <canvas id="gen-efficiency-chart" ref={charts.effRef} />
+                  <canvas id="gen-efficiency-chart" ref={effRef} />
                 </div>
               </div>
 
@@ -683,19 +679,15 @@ export function CpuGenPage() {
                               <div className="variant-detail-row">
                                 <span className="variant-detail-label">iGPU</span>
                                 <span className="variant-detail-value">
-                                  {variant.igpu_name}
-                                  {variant.gpu_eu_count ? ` (${variant.gpu_eu_count})` : ''}
-                                  <br />
-                                  <span className="variant-detail-sublabel">
-                                    {[variant.igpu_codename || '', variant.igpu_boost_mhz ? `${variant.igpu_boost_mhz} MHz boost` : '']
-                                      .filter(Boolean)
-                                      .join(' · ')}
-                                  </span>
-                                  {(() => {
-                                    const tier = getIgpuTier(variant.gpu_eu_count)
-                                    if (!tier) return null
-                                    return <span className={`igpu-tier ${tier.className}`}>{tier.tier}</span>
-                                  })()}
+	                                  {variant.igpu_name}
+	                                  {variant.gpu_eu_count ? ` (${variant.gpu_eu_count})` : ''}
+	                                  <br />
+	                                  <span className="variant-detail-sublabel">{variant.igpu_codename}</span>
+	                                  {(() => {
+	                                    const tier = getIgpuTier(variant.gpu_eu_count)
+	                                    if (!tier) return null
+	                                    return <span className={`igpu-tier ${tier.className}`}>{tier.tier}</span>
+	                                  })()}
                                 </span>
                               </div>
                             ) : null}
@@ -782,29 +774,24 @@ export function CpuGenPage() {
                       <div className="arch-variant-header">
                         <span className="variant-codename">{genData.arch_variants[0].codename || genData.architecture.name || 'Unknown'}</span>
                       </div>
-                      <div className="arch-variant-details">
-                        {/* Reuse the multi variant renderer by delegating to the same markup */}
-                        {/* eslint-disable-next-line @typescript-eslint/no-unused-expressions */}
-                        {(() => {
-                          const variant = genData.arch_variants[0]
-                          const tier = getIgpuTier(variant.gpu_eu_count)
-                          return (
+	                      <div className="arch-variant-details">
+	                        {/* Reuse the multi variant renderer by delegating to the same markup */}
+	                        {(() => {
+	                          const variant = genData.arch_variants[0]
+	                          const tier = getIgpuTier(variant.gpu_eu_count)
+	                          return (
                             <>
                               {variant.igpu_name ? (
                                 <div className="variant-detail-row">
                                   <span className="variant-detail-label">iGPU</span>
                                   <span className="variant-detail-value">
-                                    {variant.igpu_name}
-                                    {variant.gpu_eu_count ? ` (${variant.gpu_eu_count})` : ''}
-                                    <br />
-                                    <span className="variant-detail-sublabel">
-                                      {[variant.igpu_codename || '', variant.igpu_boost_mhz ? `${variant.igpu_boost_mhz} MHz boost` : '']
-                                        .filter(Boolean)
-                                        .join(' · ')}
-                                    </span>
-                                    {tier ? <span className={`igpu-tier ${tier.className}`}>{tier.tier}</span> : null}
-                                  </span>
-                                </div>
+	                                    {variant.igpu_name}
+	                                    {variant.gpu_eu_count ? ` (${variant.gpu_eu_count})` : ''}
+	                                    <br />
+	                                    <span className="variant-detail-sublabel">{variant.igpu_codename}</span>
+	                                    {tier ? <span className={`igpu-tier ${tier.className}`}>{tier.tier}</span> : null}
+	                                  </span>
+	                                </div>
                               ) : null}
 
                               {variant.max_p_cores !== null && variant.max_p_cores !== undefined ? (

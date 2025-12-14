@@ -4,7 +4,7 @@ import { ScoreBadge } from '../../components/ScoreBadge'
 import { TestBadge } from '../../components/TestBadge'
 import { BoxplotMedianChart } from '../../components/charts/BoxplotMedianChart'
 import { ConcurrencyChart } from '../../components/charts/ConcurrencyChart'
-import { useBenchmarkData } from '../../app/BenchmarkDataProvider'
+import { useBenchmarkData } from '../../app/useBenchmarkData'
 import type { BenchmarkResult } from '../../app/types'
 import { useDocumentTitle } from '../../layout/useDocumentTitle'
 import { CpuComparisonPanel } from './CpuComparisonPanel'
@@ -40,7 +40,7 @@ function toggleInArray<T extends string>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter((v) => v !== value) : [...values, value]
 }
 
-function formatQualityFlags(flags: string[] | undefined) {
+function formatQualityFlags(flags: string[] | null | undefined) {
   if (!flags || flags.length === 0) return null
   const messages: Record<string, string> = {
     power_too_low: 'Power reading < 3W (likely measurement error)',
@@ -220,7 +220,7 @@ export function HomePage() {
       if (filterType === 'ecc') {
         next.ecc = toggleInArray(prev.ecc, value as 'yes' | 'no')
       } else {
-        next[filterType] = toggleInArray(prev[filterType] as string[], value) as never
+        next[filterType] = toggleInArray(prev[filterType], value)
       }
       return next
     })

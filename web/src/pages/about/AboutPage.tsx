@@ -127,7 +127,7 @@ export function AboutPage() {
             marginTop: '0.5rem',
           }}
         >
-          <code>{`# Run benchmark (results upload automatically)\n./quicksync-benchmark.sh\n\n# Run with concurrency tests (tests maximum simultaneous encodes)\n./quicksync-benchmark.sh --concurrency\n\n# Run with your identifier to track your submissions\nQUICKSYNC_ID=\"my_homelab\" ./quicksync-benchmark.sh --concurrency\n\n# Skip result upload\nQUICKSYNC_NO_SUBMIT=1 ./quicksync-benchmark.sh`}</code>
+          <code>{`# Run benchmark (results upload automatically)\n./quicksync-benchmark.sh\n\n# Run with concurrency tests (tests maximum simultaneous encodes)\n./quicksync-benchmark.sh --concurrency\n\n# Run with your identifier to track your submissions\nQUICKSYNC_ID="my_homelab" ./quicksync-benchmark.sh --concurrency\n\n# Skip result upload\nQUICKSYNC_NO_SUBMIT=1 ./quicksync-benchmark.sh`}</code>
         </pre>
 
         <h3 style={{ marginTop: '1rem', fontSize: '1rem' }}>Requirements</h3>
@@ -311,4 +311,3 @@ export function AboutPage() {
     </div>
   )
 }
-

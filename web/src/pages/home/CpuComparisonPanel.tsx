@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { ComparisonBarChart } from '../../components/charts/ComparisonBarChart'
 import { ordinal, stripIntelBranding } from '../../utils/quicksync'
 import type { ComparisonMetric, CpuComparisonData } from '../../utils/comparisons'
@@ -18,7 +18,7 @@ export function CpuComparisonPanel({ comparison }: { comparison: CpuComparisonDa
   const cpuCount = comparison.cpus.length
   const totalResults = comparison.cpus.reduce((sum, c) => sum + c.overall.total_results, 0)
 
-  function buildDatasets(metric: ComparisonMetric) {
+  const buildDatasets = useCallback((metric: ComparisonMetric) => {
     return comparison.cpus.map((cpuData, idx) => {
       const colors = CPU_COLORS[idx % CPU_COLORS.length]
       const displayName = stripIntelBranding(cpuData.cpu_raw)
@@ -30,11 +30,11 @@ export function CpuComparisonPanel({ comparison }: { comparison: CpuComparisonDa
       })
       return { label, data, backgroundColor: colors.bg, borderColor: colors.border, borderWidth: 1 }
     })
-  }
+  }, [comparison.all_tests, comparison.cpus])
 
-  const fpsDatasets = useMemo(() => buildDatasets('avg_fps'), [comparison.all_tests, comparison.cpus])
-  const wattsDatasets = useMemo(() => buildDatasets('avg_watts'), [comparison.all_tests, comparison.cpus])
-  const efficiencyDatasets = useMemo(() => buildDatasets('fps_per_watt'), [comparison.all_tests, comparison.cpus])
+  const fpsDatasets = useMemo(() => buildDatasets('avg_fps'), [buildDatasets])
+  const wattsDatasets = useMemo(() => buildDatasets('avg_watts'), [buildDatasets])
+  const efficiencyDatasets = useMemo(() => buildDatasets('fps_per_watt'), [buildDatasets])
 
   return (
     <div id="cpu-stats" className="generation-stats cpu-stats-panel">

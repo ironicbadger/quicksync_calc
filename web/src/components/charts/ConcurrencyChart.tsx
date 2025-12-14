@@ -68,17 +68,22 @@ export function ConcurrencyChart({ concurrencyResults }: { concurrencyResults: C
             position: 'top',
             labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 12, padding: 8 },
           },
-          tooltip: {
-            backgroundColor: 'rgba(15, 23, 42, 0.95)',
-            titleColor: '#f1f5f9',
-            bodyColor: '#cbd5e1',
-            borderColor: 'rgba(71, 85, 105, 0.5)',
-            borderWidth: 1,
-            callbacks: {
-              label: (ctx) => `${ctx.dataset.label}: ${ctx.raw}x streams`,
-            },
-          },
-        },
+	          tooltip: {
+	            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+	            titleColor: '#f1f5f9',
+	            bodyColor: '#cbd5e1',
+	            borderColor: 'rgba(71, 85, 105, 0.5)',
+	            borderWidth: 1,
+	            callbacks: {
+	              label: (ctx) => {
+	                const label = typeof ctx.dataset.label === 'string' ? ctx.dataset.label : String(ctx.dataset.label ?? '')
+	                const raw = typeof ctx.raw === 'number' ? ctx.raw : Number(ctx.raw)
+	                const streams = Number.isFinite(raw) ? raw : 0
+	                return `${label}: ${streams}x streams`
+	              },
+	            },
+	          },
+	        },
         scales: {
           x: {
             ticks: { color: '#94a3b8', font: { size: 11 } },
@@ -108,4 +113,3 @@ export function ConcurrencyChart({ concurrencyResults }: { concurrencyResults: C
     </div>
   )
 }
-

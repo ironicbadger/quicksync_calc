@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { ComparisonBarChart } from '../../components/charts/ComparisonBarChart'
 import { formatGeneration, ordinal } from '../../utils/quicksync'
 import type { ComparisonMetric, GenerationComparisonData } from '../../utils/comparisons'
@@ -77,7 +77,7 @@ export function GenerationComparisonPanel({ comparison }: { comparison: Generati
 
   const includes8 = comparison.numeric_generations.includes(8)
 
-  function buildDatasets(metric: ComparisonMetric) {
+  const buildDatasets = useCallback((metric: ComparisonMetric) => {
     const datasets = comparison.groups.map((g) => {
       const colors = g.isArc ? ARC_COLORS : (GEN_COLORS[g.generation] ?? DEFAULT_COLORS)
       const label = g.isArc ? (g.architecture ?? 'Arc') : formatGeneration(g.generation)
@@ -105,11 +105,11 @@ export function GenerationComparisonPanel({ comparison }: { comparison: Generati
     }
 
     return datasets
-  }
+  }, [comparison.all_tests, comparison.baseline_by_test, comparison.groups, includes8])
 
-  const fpsDatasets = useMemo(() => buildDatasets('avg_fps'), [comparison.all_tests, comparison.baseline_by_test, comparison.groups, includes8])
-  const wattsDatasets = useMemo(() => buildDatasets('avg_watts'), [comparison.all_tests, comparison.baseline_by_test, comparison.groups, includes8])
-  const efficiencyDatasets = useMemo(() => buildDatasets('fps_per_watt'), [comparison.all_tests, comparison.baseline_by_test, comparison.groups, includes8])
+  const fpsDatasets = useMemo(() => buildDatasets('avg_fps'), [buildDatasets])
+  const wattsDatasets = useMemo(() => buildDatasets('avg_watts'), [buildDatasets])
+  const efficiencyDatasets = useMemo(() => buildDatasets('fps_per_watt'), [buildDatasets])
 
   const fpsTooltip = useMemo(
     () => ({ baseline_by_test: comparison.baseline_by_test, metric: 'avg_fps' as const }),

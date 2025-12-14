@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
     define: {
       // Astro used PUBLIC_* env vars; keep them working in Vite.
       'import.meta.env.PUBLIC_API_URL': JSON.stringify(env.PUBLIC_API_URL ?? ''),
-      'import.meta.env.PUBLIC_TEST_DATA': JSON.stringify(env.PUBLIC_TEST_DATA ?? ''),
+      'import.meta.env.USE_PRODUCTION_DATA': JSON.stringify(env.USE_PRODUCTION_DATA ?? ''),
     },
   }
 })

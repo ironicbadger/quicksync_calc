@@ -187,7 +187,7 @@ function avg(values: number[]): number {
   return values.reduce((a, b) => a + b, 0) / values.length
 }
 
-type ArchCodecSupport = { av1: boolean; hevc10: boolean; vp9: boolean }
+type ArchCodecSupport = { av1: number; hevc10: number; vp9: number }
 
 export type OverallCpuScoreRow = {
   cpu_raw: string
