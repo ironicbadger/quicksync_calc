@@ -62,6 +62,7 @@ const CPU_PATTERNS: ArchitecturePattern[] = [
   { pattern: /Ultra [3579] 2\d{2}[VU]/, architecture: 'Lunar Lake', codename: 'LNL', releaseYear: 2024, sortOrder: 210 },
   { pattern: /Xeon.*E3-1[23]\d{2}/, architecture: 'Xeon E3', codename: 'Various', releaseYear: 2015, sortOrder: 55 },
   { pattern: /Xeon.*E-2[123]\d{2}/, architecture: 'Xeon E', codename: 'CFL', releaseYear: 2018, sortOrder: 85 },
+  { pattern: /(?:Pentium.*)?G(?:4560T?|4600T?|4620)\b/, architecture: 'Kaby Lake', codename: 'KBL', releaseYear: 2017, sortOrder: 70 }, // Pentium G4560/G4600/G4620
   { pattern: /Pentium.*G[567]\d{3}/, architecture: 'Pentium Gold', codename: 'CFL', releaseYear: 2018, sortOrder: 82 },
   { pattern: /Celeron.*G[4567]\d{3}/, architecture: 'Celeron', codename: 'Various', releaseYear: 2017, sortOrder: 65 },
   { pattern: /N[456]\d{3}/, architecture: 'Jasper Lake', codename: 'JSL', releaseYear: 2021, sortOrder: 108 }, // N4xxx, N5xxx, N6xxx (e.g., N5105, N5095, N6005)
@@ -75,7 +76,7 @@ const CPU_PATTERNS: ArchitecturePattern[] = [
   { pattern: /E3-\d{4}\s*v4/, architecture: 'Broadwell', codename: 'BDW', releaseYear: 2015, sortOrder: 50 }, // E3-1245v4
   { pattern: /E3-\d{4}\s*v3/, architecture: 'Haswell', codename: 'HSW', releaseYear: 2013, sortOrder: 40 }, // E3-1245v3
   { pattern: /E-2[123]\d{2}G?/, architecture: 'Xeon E', codename: 'CFL', releaseYear: 2018, sortOrder: 85 }, // E-2144G, E-2288G (standalone pattern)
-  { pattern: /G4\d{3}[T]?/, architecture: 'Coffee Lake', codename: 'CFL', releaseYear: 2018, sortOrder: 80 }, // G4900T, G4560
+  { pattern: /G49\d{2}[T]?/, architecture: 'Coffee Lake', codename: 'CFL', releaseYear: 2018, sortOrder: 80 }, // G4900T
   { pattern: /m3-\d{4}Y/, architecture: 'Amber Lake', codename: 'AML-Y', releaseYear: 2018, sortOrder: 83 }, // m3-8100Y
   { pattern: /M-5Y\d{2}/, architecture: 'Broadwell', codename: 'BDW-Y', releaseYear: 2014, sortOrder: 50 }, // M-5Y10c (Core M)
   { pattern: /Pentium.*Silver/, architecture: 'Gemini Lake', codename: 'GLK', releaseYear: 2017, sortOrder: 72 }, // Pentium Silver J/N5xxx
@@ -102,6 +103,12 @@ export function parseCPU(cpuRaw: string): CPUInfo {
   const brandMatch = cpuRaw.match(/(i[3579]|Ultra [3579])/);
   if (brandMatch) {
     brand = brandMatch[1];
+  } else if (/Pentium\s+Gold/i.test(cpuRaw)) {
+    brand = 'Pentium Gold';
+  } else if (/Pentium\s+Silver/i.test(cpuRaw)) {
+    brand = 'Pentium Silver';
+  } else if (/Pentium/i.test(cpuRaw)) {
+    brand = 'Pentium';
   }
 
   // Extract model for legacy naming (i5-12500)
@@ -113,6 +120,11 @@ export function parseCPU(cpuRaw: string): CPUInfo {
     const ultraMatch = cpuRaw.match(/Ultra \d (\d+[A-Z]?)/);
     if (ultraMatch) {
       model = ultraMatch[1];
+    } else {
+      const pentiumMatch = cpuRaw.match(/\b(G\d{4}[A-Z]?)\b/);
+      if (pentiumMatch) {
+        model = pentiumMatch[1];
+      }
     }
   }
 
@@ -137,6 +149,10 @@ export function parseCPU(cpuRaw: string): CPUInfo {
         // 5-digit model numbers: first 2 digits are generation (12600K -> gen 12)
         generation = parseInt(numericPart.slice(0, 2), 10);
       }
+    }
+
+    if (generation === null && /^G(?:4560T?|4600T?|4620)$/i.test(model)) {
+      generation = 7;
     }
   }
 
