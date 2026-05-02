@@ -10,12 +10,17 @@
 #
 # Flags:
 #   --skip-warnings        - Skip the GPU process warning prompt
-#   --concurrency          - Run concurrency tests (how many simultaneous streams)
+#   --concurrency          - Run standard benchmarks plus concurrency tests
+#   --concurrency-only     - Run only concurrency tests (skip single-stream benchmarks)
+#   --max-concurrency N    - Cap concurrency tests at N streams (default: 20)
+#   --no-submit            - Skip uploading results (same as QUICKSYNC_NO_SUBMIT=1)
 #
 
 # Parse command line arguments
 SKIP_WARNINGS=0
 RUN_CONCURRENCY=0
+RUN_CONCURRENCY_ONLY=0
+MAX_CONCURRENCY=20
 while [[ $# -gt 0 ]]; do
   case $1 in
     --skip-warnings)
@@ -26,9 +31,26 @@ while [[ $# -gt 0 ]]; do
       RUN_CONCURRENCY=1
       shift
       ;;
+    --concurrency-only)
+      RUN_CONCURRENCY=1
+      RUN_CONCURRENCY_ONLY=1
+      shift
+      ;;
+    --max-concurrency)
+      if [[ -z "$2" || ! "$2" =~ ^[0-9]+$ ]] || [ "$2" -lt 1 ]; then
+        echo "Error: --max-concurrency requires a positive integer"
+        exit 1
+      fi
+      MAX_CONCURRENCY=$2
+      shift 2
+      ;;
+    --no-submit)
+      QUICKSYNC_NO_SUBMIT=1
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--skip-warnings] [--concurrency]"
+      echo "Usage: $0 [--skip-warnings] [--concurrency|--concurrency-only] [--max-concurrency N] [--no-submit]"
       exit 1
       ;;
   esac
@@ -115,15 +137,23 @@ show_concurrency_prompt(){
     echo "              CONCURRENCY TESTING"
     echo "======================================================="
     echo ""
-    echo "You've enabled concurrency testing with --concurrency"
-    echo ""
-    echo "This will test how many simultaneous video encodes"
-    echo "your CPU can handle while maintaining realtime speed."
-    echo ""
-    echo "  Standard benchmarks: ~5-10 minutes"
-    echo "  + Concurrency tests: ~15-30 minutes extra"
-    echo ""
-    echo "Total estimated time: 20-40 minutes"
+    if [ "$RUN_CONCURRENCY_ONLY" -eq 1 ]; then
+      echo "You've enabled concurrency-only mode."
+      echo ""
+      echo "Single-stream benchmarks will be skipped."
+      echo ""
+      echo "  Concurrency tests (max ${MAX_CONCURRENCY}x): ~15-30 minutes"
+    else
+      echo "You've enabled concurrency testing with --concurrency"
+      echo ""
+      echo "This will test how many simultaneous video encodes"
+      echo "your CPU can handle while maintaining realtime speed."
+      echo ""
+      echo "  Standard benchmarks: ~5-10 minutes"
+      echo "  + Concurrency tests (max ${MAX_CONCURRENCY}x): ~15-30 minutes extra"
+      echo ""
+      echo "Total estimated time: 20-40 minutes"
+    fi
     echo ""
     echo "======================================================="
     echo ""
@@ -132,6 +162,7 @@ show_concurrency_prompt(){
     if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
       echo "Disabling concurrency tests. Run without --concurrency flag to skip this prompt."
       RUN_CONCURRENCY=0
+      RUN_CONCURRENCY_ONLY=0
     fi
     echo ""
   fi
@@ -468,11 +499,12 @@ run_benchmark(){
 check_qsv_encoder(){
   local encoder=$1
 
-  # Try to initialize the encoder with a quick test
-  # This uses ffmpeg's -f lavfi input to avoid needing a file
+  # Try to initialize the encoder with a quick test.
+  # 640x480 is large enough for AV1/VP9 QSV hardware initialization;
+  # smaller probe sizes like 64x64 silently fail on Arc GPUs.
   docker exec jellyfin-qsvtest /usr/lib/jellyfin-ffmpeg/ffmpeg \
     -hide_banner -v quiet \
-    -f lavfi -i "nullsrc=s=64x64:d=0.1" \
+    -f lavfi -i "nullsrc=s=640x480:d=1" \
     -c:v "$encoder" \
     -frames:v 1 \
     -f null - 2>/dev/null
@@ -607,8 +639,12 @@ run_concurrency_tests(){
   echo "realtime (>=1.0x) encoding speed..."
   echo ""
 
-  # Initialize concurrency results array with header
-  concurrency_arr=("CPU|TEST|FILE|1x|2x|3x|4x|5x|6x|7x|8x|9x|10x")
+  # Initialize concurrency results array with header (1x..${MAX_CONCURRENCY}x)
+  local header="CPU|TEST|FILE"
+  for i in $(seq 1 "$MAX_CONCURRENCY"); do
+    header="${header}|${i}x"
+  done
+  concurrency_arr=("$header")
 
   local test_num=0
   local total_tests=5
@@ -616,7 +652,7 @@ run_concurrency_tests(){
   # Test H.264 1080p concurrency
   test_num=$((test_num + 1))
   echo "[$test_num/$total_tests] H.264 1080p concurrency test"
-  find_max_concurrency "h264_1080p" "ribblehead_1080p_h264" 10
+  find_max_concurrency "h264_1080p" "ribblehead_1080p_h264" "$MAX_CONCURRENCY"
   local h264_1080p_line="$cpu_model|h264_1080p|ribblehead_1080p_h264"
   for speed in "${concurrency_speeds[@]}"; do
     h264_1080p_line="$h264_1080p_line|$speed"
@@ -628,7 +664,7 @@ run_concurrency_tests(){
   # Test H.264 4K concurrency
   test_num=$((test_num + 1))
   echo "[$test_num/$total_tests] H.264 4K concurrency test"
-  find_max_concurrency "h264_4k" "ribblehead_4k_h264" 10
+  find_max_concurrency "h264_4k" "ribblehead_4k_h264" "$MAX_CONCURRENCY"
   local h264_4k_line="$cpu_model|h264_4k|ribblehead_4k_h264"
   for speed in "${concurrency_speeds[@]}"; do
     h264_4k_line="$h264_4k_line|$speed"
@@ -640,7 +676,7 @@ run_concurrency_tests(){
   # Test HEVC 8-bit 1080p concurrency
   test_num=$((test_num + 1))
   echo "[$test_num/$total_tests] HEVC 8-bit 1080p concurrency test"
-  find_max_concurrency "hevc_8bit" "ribblehead_1080p_hevc_8bit" 10
+  find_max_concurrency "hevc_8bit" "ribblehead_1080p_hevc_8bit" "$MAX_CONCURRENCY"
   local hevc_8bit_line="$cpu_model|hevc_8bit|ribblehead_1080p_hevc_8bit"
   for speed in "${concurrency_speeds[@]}"; do
     hevc_8bit_line="$hevc_8bit_line|$speed"
@@ -652,7 +688,7 @@ run_concurrency_tests(){
   # Test HEVC 10-bit 4K concurrency
   test_num=$((test_num + 1))
   echo "[$test_num/$total_tests] HEVC 10-bit 4K concurrency test"
-  find_max_concurrency "hevc_4k_10bit" "ribblehead_4k_hevc_10bit" 10
+  find_max_concurrency "hevc_4k_10bit" "ribblehead_4k_hevc_10bit" "$MAX_CONCURRENCY"
   local hevc_10bit_line="$cpu_model|hevc_4k_10bit|ribblehead_4k_hevc_10bit"
   for speed in "${concurrency_speeds[@]}"; do
     hevc_10bit_line="$hevc_10bit_line|$speed"
@@ -664,7 +700,7 @@ run_concurrency_tests(){
   # Test H.264 1080p CPU baseline concurrency
   test_num=$((test_num + 1))
   echo "[$test_num/$total_tests] H.264 1080p CPU baseline concurrency test"
-  find_max_concurrency "h264_1080p_cpu" "ribblehead_1080p_h264" 10
+  find_max_concurrency "h264_1080p_cpu" "ribblehead_1080p_h264" "$MAX_CONCURRENCY"
   local h264_cpu_line="$cpu_model|h264_1080p_cpu|ribblehead_1080p_h264"
   for speed in "${concurrency_speeds[@]}"; do
     h264_cpu_line="$h264_cpu_line|$speed"
@@ -747,76 +783,84 @@ main(){
     exit 1
   fi
 
-  echo ""
-  echo "Running benchmarks (estimated total time: 5-7 minutes)"
-  echo "======================================================="
-  echo ""
+  SUBMISSION_TOKEN=""
 
-  run_benchmark 1 5 "h264_1080p_cpu" "ribblehead_1080p_h264" "H.264 1080p (CPU)" "~60-90s"
-  run_benchmark 2 5 "h264_1080p" "ribblehead_1080p_h264" "H.264 1080p (QSV)" "~15-20s"
-  run_benchmark 3 5 "h264_4k" "ribblehead_4k_h264" "H.264 4K (QSV)" "~60-70s"
-  run_benchmark 4 5 "hevc_8bit" "ribblehead_1080p_hevc_8bit" "HEVC 1080p 8-bit (QSV)" "~45-50s"
-  run_benchmark 5 5 "hevc_4k_10bit" "ribblehead_4k_hevc_10bit" "HEVC 4K 10-bit (QSV)" "~180s"
-
-  echo ""
-  echo "======================================================="
-  echo "Core Results:"
-  echo ""
-
-  #Print Core Results
-  printf '%s\n' "${quicksyncstats_arr[@]}" | column -t -s '|'
-  printf "\n"
-
-  # Detect and run experimental codec tests (VP9/AV1)
-  echo "======================================================="
-  echo "Experimental Codec Tests"
-  echo "======================================================="
-  echo ""
-
-  detect_qsv_codecs
-
-  local experimental_count=0
-
-  if [ "$VP9_SUPPORTED" -eq 1 ]; then
-    experimental_count=$((experimental_count + 1))
-    echo "[Experimental] VP9 1080p (QSV)"
-    benchmarks "vp9_1080p" "ribblehead_1080p_h264"
-    printf "       Done!\n"
-  fi
-
-  if [ "$AV1_SUPPORTED" -eq 1 ]; then
-    experimental_count=$((experimental_count + 1))
-    echo "[Experimental] AV1 1080p (QSV)"
-    benchmarks "av1_1080p" "ribblehead_1080p_h264"
-    printf "       Done!\n"
-  fi
-
-  if [ "$experimental_count" -eq 0 ]; then
-    echo "No experimental codecs available on this hardware."
+  if [ "$RUN_CONCURRENCY_ONLY" -eq 1 ]; then
+    echo ""
+    echo "Concurrency-only mode: skipping single-stream benchmarks."
+    echo "======================================================="
+    echo ""
   else
     echo ""
-    echo "Experimental Results:"
+    echo "Running benchmarks (estimated total time: 5-7 minutes)"
+    echo "======================================================="
     echo ""
-    # Print last N results (the experimental ones)
-    printf '%s\n' "${quicksyncstats_arr[@]}" | tail -$((experimental_count + 1)) | column -t -s '|'
+
+    run_benchmark 1 5 "h264_1080p_cpu" "ribblehead_1080p_h264" "H.264 1080p (CPU)" "~60-90s"
+    run_benchmark 2 5 "h264_1080p" "ribblehead_1080p_h264" "H.264 1080p (QSV)" "~15-20s"
+    run_benchmark 3 5 "h264_4k" "ribblehead_4k_h264" "H.264 4K (QSV)" "~60-70s"
+    run_benchmark 4 5 "hevc_8bit" "ribblehead_1080p_hevc_8bit" "HEVC 1080p 8-bit (QSV)" "~45-50s"
+    run_benchmark 5 5 "hevc_4k_10bit" "ribblehead_4k_hevc_10bit" "HEVC 4K 10-bit (QSV)" "~180s"
+
+    echo ""
+    echo "======================================================="
+    echo "Core Results:"
+    echo ""
+
+    #Print Core Results
+    printf '%s\n' "${quicksyncstats_arr[@]}" | column -t -s '|'
+    printf "\n"
+
+    # Detect and run experimental codec tests (VP9/AV1)
+    echo "======================================================="
+    echo "Experimental Codec Tests"
+    echo "======================================================="
+    echo ""
+
+    detect_qsv_codecs
+
+    local experimental_count=0
+
+    if [ "$VP9_SUPPORTED" -eq 1 ]; then
+      experimental_count=$((experimental_count + 1))
+      echo "[Experimental] VP9 1080p (QSV)"
+      benchmarks "vp9_1080p" "ribblehead_1080p_h264"
+      printf "       Done!\n"
+    fi
+
+    if [ "$AV1_SUPPORTED" -eq 1 ]; then
+      experimental_count=$((experimental_count + 1))
+      echo "[Experimental] AV1 1080p (QSV)"
+      benchmarks "av1_1080p" "ribblehead_1080p_h264"
+      printf "       Done!\n"
+    fi
+
+    if [ "$experimental_count" -eq 0 ]; then
+      echo "No experimental codecs available on this hardware."
+    else
+      echo ""
+      echo "Experimental Results:"
+      echo ""
+      # Print last N results (the experimental ones)
+      printf '%s\n' "${quicksyncstats_arr[@]}" | tail -$((experimental_count + 1)) | column -t -s '|'
+    fi
+
+    echo ""
+    echo "======================================================="
+    echo "All Results:"
+    echo ""
+
+    #Print Results
+    printf '%s\n' "${quicksyncstats_arr[@]}" | column -t -s '|'
+    printf "\n"
+
+    # Upload standard results for web verification and get token (default behavior)
+    if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
+      upload_standard_results_for_verification
+    fi
   fi
 
-  echo ""
-  echo "======================================================="
-  echo "All Results:"
-  echo ""
-
-  #Print Results
-  printf '%s\n' "${quicksyncstats_arr[@]}" | column -t -s '|'
-  printf "\n"
-
-  # Upload standard results for web verification and get token (default behavior)
-  SUBMISSION_TOKEN=""
-  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
-    upload_standard_results_for_verification
-  fi
-
-  # Run concurrency tests if --concurrency flag was passed
+  # Run concurrency tests if --concurrency or --concurrency-only flag was passed
   if [ "$RUN_CONCURRENCY" -eq 1 ]; then
     run_concurrency_tests
   fi
