@@ -67,9 +67,41 @@ You can automatically submit your results to the online database:
 
 # Submit with your own identifier (for filtering your results later)
 QUICKSYNC_ID="my_homelab" ./quicksync-benchmark.sh
+
+# Run without submitting
+./quicksync-benchmark.sh --no-submit
 ```
 
 deprecated ~~Alternatively, you can still manually copy results to the [GitHub Gist](https://gist.github.com/ironicbadger/5da9b321acbe6b6b53070437023b844d).~~
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--skip-warnings` | Skip the GPU process warning prompt and the concurrency confirmation prompt |
+| `--concurrency` | Run the standard single-stream benchmarks **plus** concurrency tests (how many simultaneous streams the hardware can sustain at ≥1.0× realtime) |
+| `--concurrency-only` | Skip single-stream benchmarks and run **only** concurrency tests. Useful when you've already submitted standard results and just want to measure simultaneous-stream capacity |
+| `--max-concurrency N` | Cap concurrency tests at N simultaneous streams (default: `20`). The test still short-circuits early once speed drops below 1.0×, so raising this is safe on weaker hardware |
+| `--no-submit` | Skip uploading results to the online database (equivalent to `QUICKSYNC_NO_SUBMIT=1`) |
+
+| Environment variable | Description |
+|----------------------|-------------|
+| `QUICKSYNC_ID` | Optional identifier attached to your submissions, lets you filter your own results on the website |
+| `QUICKSYNC_NO_SUBMIT=1` | Same as `--no-submit` |
+| `QUICKSYNC_API_URL` | Override the default API endpoint (`https://quicksync-api.ktz.me`); useful for self-hosted deployments |
+
+#### Examples
+
+```bash
+# Standard run with concurrency tests, capped at 30 streams
+./quicksync-benchmark.sh --concurrency --max-concurrency 30
+
+# Concurrency-only run for an already-tested system
+./quicksync-benchmark.sh --concurrency-only
+
+# Local-only run with no submission and a stable identifier
+QUICKSYNC_ID="my_homelab" ./quicksync-benchmark.sh --no-submit --skip-warnings
+```
 
 ## Sample Output
 
