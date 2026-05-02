@@ -9,7 +9,6 @@
     "tail": "wrangler tail"
   },
   "dependencies": {
-    "@libsql/client": "^0.14.0",
     "hono": "^4.6.0"
   },
   "devDependencies": {

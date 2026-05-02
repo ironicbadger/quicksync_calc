@@ -20,6 +20,12 @@ benchmark(){
     hevc_4k_10bit)
       hevc_4k_10bit
       ;;
+    vp9_1080p)
+      vp9_1080p
+      ;;
+    av1_1080p)
+      av1_1080p
+      ;;
   esac
 }
 
@@ -41,6 +47,17 @@ hevc_8bit(){
 
 hevc_4k_10bit(){
   /usr/lib/jellyfin-ffmpeg/ffmpeg -y -hide_banner -benchmark -report -c:v hevc_qsv -i /config/ribblehead_4k_hevc_10bit.mp4 -c:a copy -c:v hevc_qsv -preset fast -global_quality 18 -look_ahead 1 -f null - 2>/dev/null
+}
+
+# VP9 encode (experimental - Tiger Lake+ / 11th gen)
+# Note: VP9 QSV uses different quality parameter
+vp9_1080p(){
+  /usr/lib/jellyfin-ffmpeg/ffmpeg -y -hide_banner -benchmark -report -c:v h264 -i /config/ribblehead_1080p_h264.mp4 -c:a copy -c:v vp9_qsv -preset fast -global_quality 18 -f null - 2>/dev/null
+}
+
+# AV1 encode (experimental - Arc / Meteor Lake+ only)
+av1_1080p(){
+  /usr/lib/jellyfin-ffmpeg/ffmpeg -y -hide_banner -benchmark -report -c:v h264 -i /config/ribblehead_1080p_h264.mp4 -c:a copy -c:v av1_qsv -preset fast -global_quality 18 -f null - 2>/dev/null
 }
 
 benchmark $1

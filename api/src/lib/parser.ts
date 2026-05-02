@@ -3,8 +3,18 @@
  * Handles pipe-delimited format from quicksync-benchmark.sh and nvenc-benchmark.sh
  */
 
-import { createHash } from 'crypto';
 import { parseCPU, CPUInfo } from './cpu-parser';
+
+/**
+ * Generate SHA-256 hash using Web Crypto API (Cloudflare Workers compatible)
+ */
+async function generateHash(input: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(input);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 /**
  * Strip frequency suffix (e.g., "@ 3.90GHz") from CPU string.
@@ -167,7 +177,7 @@ export interface ParsedResult {
  * CPU|TEST|FILE|BITRATE|TIME|AVG_FPS|AVG_SPEED|AVG_WATTS
  * Intel(R) Core(TM) i5-12500 CPU @ 3.00GHz|h264_1080p|ribblehead_1080p_h264|4500kb/s|10.5s|120.5|2.5x|15.2
  */
-export function parseResults(body: string): ParsedResult[] {
+export async function parseResults(body: string): Promise<ParsedResult[]> {
   const lines = body.trim().split('\n');
   const results: ParsedResult[] = [];
 
@@ -235,7 +245,7 @@ export function parseResults(body: string): ParsedResult[] {
 
     // Generate hash for deduplication (use cleaned CPU string)
     const hashInput = `${cpuRaw}|${testName}|${testFile}|${bitrate}|${fps}|${watts}`;
-    const resultHash = createHash('sha256').update(hashInput).digest('hex');
+    const resultHash = await generateHash(hashInput);
 
     results.push({
       cpu_raw: cpuRaw,
@@ -280,7 +290,7 @@ export interface ParsedConcurrencyResult {
   vendor: string;
 }
 
-export function parseConcurrencyResults(body: string): ParsedConcurrencyResult[] {
+export async function parseConcurrencyResults(body: string): Promise<ParsedConcurrencyResult[]> {
   const lines = body.trim().split('\n');
   const results: ParsedConcurrencyResult[] = [];
 
@@ -337,7 +347,7 @@ export function parseConcurrencyResults(body: string): ParsedConcurrencyResult[]
 
     // Generate hash (use cleaned CPU string)
     const hashInput = `${cpuRaw}|${testName}|${testFile}|${speeds.join(',')}`;
-    const resultHash = createHash('sha256').update(hashInput).digest('hex');
+    const resultHash = await generateHash(hashInput);
 
     results.push({
       cpu_raw: cpuRaw,

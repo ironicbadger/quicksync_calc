@@ -63,7 +63,7 @@ submit.post('/', async (c) => {
   submitterId = normalizeSubmitterId(submitterId);
 
   // Parse results
-  const results = parseResults(body);
+  const results = await parseResults(body);
 
   if (results.length === 0) {
     return c.json({ success: false, error: 'No valid results found' }, 400);

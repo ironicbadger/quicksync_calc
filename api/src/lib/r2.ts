@@ -1,6 +1,6 @@
 /**
  * R2 storage helpers for benchmark data.
- * Replaces Turso database with a single JSON file.
+ * Uses a single JSON file stored in Cloudflare R2.
  */
 
 // Environment bindings
@@ -45,7 +45,7 @@ export interface ConcurrencyResult {
   architecture: string | null;
   test_name: string;
   test_file: string;
-  speeds_json: number[];
+  speeds_json: string;
   max_concurrency: number;
   result_hash: string;
   vendor: string;
