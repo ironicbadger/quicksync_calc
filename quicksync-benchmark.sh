@@ -715,8 +715,13 @@ run_concurrency_tests(){
   printf '%s\n' "${concurrency_arr[@]}" | column -t -s '|'
   echo ""
 
-  # Upload concurrency results
-  if [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
+  # Upload concurrency results.
+  # Concurrency-only is a local measurement mode: results need a verified
+  # standard-benchmark token for proper linkage, so we don't submit
+  # orphaned concurrency data.
+  if [ "$RUN_CONCURRENCY_ONLY" -eq 1 ]; then
+    echo "Concurrency-only mode: results are local-only and will not be uploaded."
+  elif [ "${QUICKSYNC_NO_SUBMIT}" != "1" ]; then
     upload_concurrency_results
   fi
 }

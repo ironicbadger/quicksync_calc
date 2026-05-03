@@ -80,7 +80,7 @@ deprecated ~~Alternatively, you can still manually copy results to the [GitHub G
 |------|-------------|
 | `--skip-warnings` | Skip the GPU process warning prompt and the concurrency confirmation prompt |
 | `--concurrency` | Run the standard single-stream benchmarks **plus** concurrency tests (how many simultaneous streams the hardware can sustain at ≥1.0× realtime) |
-| `--concurrency-only` | Skip single-stream benchmarks and run **only** concurrency tests. Useful when you've already submitted standard results and just want to measure simultaneous-stream capacity |
+| `--concurrency-only` | Skip single-stream benchmarks and run **only** concurrency tests as a local measurement. Useful when you don't want to rerun single-stream benchmarks. Results are **not** uploaded in this mode — concurrency results need to be linked to a verified standard-benchmark run, so this mode is local-only |
 | `--max-concurrency N` | Cap concurrency tests at N simultaneous streams (default: `20`). The test still short-circuits early once speed drops below 1.0×, so raising this is safe on weaker hardware |
 | `--no-submit` | Skip uploading results to the online database (equivalent to `QUICKSYNC_NO_SUBMIT=1`) |
 
@@ -96,7 +96,7 @@ deprecated ~~Alternatively, you can still manually copy results to the [GitHub G
 # Standard run with concurrency tests, capped at 30 streams
 ./quicksync-benchmark.sh --concurrency --max-concurrency 30
 
-# Concurrency-only run for an already-tested system
+# Local concurrency measurement (results not uploaded)
 ./quicksync-benchmark.sh --concurrency-only
 
 # Local-only run with no submission and a stable identifier
