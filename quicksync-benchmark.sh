@@ -846,8 +846,13 @@ main(){
       echo ""
       echo "Experimental Results:"
       echo ""
-      # Print last N results (the experimental ones)
-      printf '%s\n' "${quicksyncstats_arr[@]}" | tail -$((experimental_count + 1)) | column -t -s '|'
+      # Print the header (index 0) plus only the experimental rows (last N).
+      # Previously used `tail -$((experimental_count + 1))` which leaked
+      # the last standard benchmark row into the experimental section.
+      {
+        printf '%s\n' "${quicksyncstats_arr[0]}"
+        printf '%s\n' "${quicksyncstats_arr[@]}" | tail -n "$experimental_count"
+      } | column -t -s '|'
     fi
 
     echo ""
