@@ -9,6 +9,19 @@ describe('benchmarkDataSchema', () => {
     expect(() => parseBenchmarkData(json)).not.toThrow()
   })
 
+  it('keeps Pentium G4560 data on Kaby Lake with ECC support', () => {
+    const raw = readFileSync(new URL('../../../public/test-data.json', import.meta.url), 'utf-8')
+    const data = parseBenchmarkData(JSON.parse(raw) as unknown)
+    const g4560Results = data.results.filter((result) => result.cpu_raw === 'Intel Pentium G4560')
+
+    expect(g4560Results.length).toBeGreaterThan(0)
+    expect(g4560Results.every((result) => result.cpu_brand === 'Pentium')).toBe(true)
+    expect(g4560Results.every((result) => result.cpu_model === 'G4560')).toBe(true)
+    expect(g4560Results.every((result) => result.cpu_generation === 7)).toBe(true)
+    expect(g4560Results.every((result) => result.architecture === 'Kaby Lake')).toBe(true)
+    expect(data.cpuFeatures['Intel Pentium G4560']).toEqual({ ecc_support: true })
+  })
+
   it('accepts production-shaped fields', () => {
     const parsed = parseBenchmarkData({
       version: 1,
