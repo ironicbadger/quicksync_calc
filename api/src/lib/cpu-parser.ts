@@ -65,6 +65,9 @@ const CPU_PATTERNS: ArchitecturePattern[] = [
   { pattern: /(?:Pentium.*)?G(?:4560T?|4600T?|4620)\b/, architecture: 'Kaby Lake', codename: 'KBL', releaseYear: 2017, sortOrder: 70 }, // Pentium G4560/G4600/G4620
   { pattern: /Pentium.*G[567]\d{3}/, architecture: 'Pentium Gold', codename: 'CFL', releaseYear: 2018, sortOrder: 82 },
   { pattern: /Celeron.*G[4567]\d{3}/, architecture: 'Celeron', codename: 'Various', releaseYear: 2017, sortOrder: 65 },
+  { pattern: /(?:Celeron.*)?J3\d{3}E?\b/, architecture: 'Apollo Lake', codename: 'APL', releaseYear: 2016, sortOrder: 68 }, // J3355, J3455, J3455E
+  { pattern: /(?:Celeron.*)?N3\d{3}\b/, architecture: 'Apollo Lake', codename: 'APL', releaseYear: 2016, sortOrder: 68 }, // N3350, N3450
+  { pattern: /(?:Pentium.*)?N4200\b/, architecture: 'Apollo Lake', codename: 'APL', releaseYear: 2016, sortOrder: 68 },
   { pattern: /N[456]\d{3}/, architecture: 'Jasper Lake', codename: 'JSL', releaseYear: 2021, sortOrder: 108 }, // N4xxx, N5xxx, N6xxx (e.g., N5105, N5095, N6005)
   { pattern: /N[12]\d{2}/, architecture: 'Alder Lake-N', codename: 'ADL-N', releaseYear: 2023, sortOrder: 125 },
   { pattern: /i3-N\d{3}/, architecture: 'Alder Lake-N', codename: 'ADL-N', releaseYear: 2023, sortOrder: 125 }, // i3-N305, i3-N300
@@ -103,6 +106,8 @@ export function parseCPU(cpuRaw: string): CPUInfo {
   const brandMatch = cpuRaw.match(/(i[3579]|Ultra [3579])/);
   if (brandMatch) {
     brand = brandMatch[1];
+  } else if (/Celeron/i.test(cpuRaw)) {
+    brand = 'Celeron';
   } else if (/Pentium\s+Gold/i.test(cpuRaw)) {
     brand = 'Pentium Gold';
   } else if (/Pentium\s+Silver/i.test(cpuRaw)) {
@@ -121,9 +126,9 @@ export function parseCPU(cpuRaw: string): CPUInfo {
     if (ultraMatch) {
       model = ultraMatch[1];
     } else {
-      const pentiumMatch = cpuRaw.match(/\b(G\d{4}[A-Z]?)\b/);
-      if (pentiumMatch) {
-        model = pentiumMatch[1];
+      const atomMatch = cpuRaw.match(/\b([GJN]\d{4}[A-Z]?)\b/);
+      if (atomMatch) {
+        model = atomMatch[1];
       }
     }
   }

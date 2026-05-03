@@ -22,6 +22,17 @@ describe('benchmarkDataSchema', () => {
     expect(data.cpuFeatures['Intel Pentium G4560']).toEqual({ ecc_support: true })
   })
 
+  it('includes Apollo Lake architecture metadata for J3455E-class CPUs', () => {
+    const raw = readFileSync(new URL('../../../public/test-data.json', import.meta.url), 'utf-8')
+    const data = parseBenchmarkData(JSON.parse(raw) as unknown)
+    const apolloLake = data.architectures.find((arch) => arch.architecture === 'Apollo Lake')
+
+    expect(apolloLake).toBeDefined()
+    expect(apolloLake?.pattern).toBe('J3\\d{3}E?|N3\\d{3}|N4200')
+    expect(apolloLake?.igpu_name).toBe('Intel HD Graphics 500/505')
+    expect(apolloLake?.tdp_range).toBe('6-10W')
+  })
+
   it('accepts production-shaped fields', () => {
     const parsed = parseBenchmarkData({
       version: 1,
