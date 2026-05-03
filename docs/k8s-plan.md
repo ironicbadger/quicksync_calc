@@ -102,7 +102,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     intel-gpu-tools \
     curl \
     jq \
-    bc \
     wget \
     && rm -rf /var/lib/apt/lists/*
 

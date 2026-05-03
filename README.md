@@ -24,7 +24,7 @@ The website provides:
 - Intel CPU with Quick Sync support
 - `intel-gpu-tools` package (for power measurement)
 - `jq` (for JSON parsing)
-- `bc` (for calculations)
+- `awk` (for calculations - typically pre-installed)
 
 Designed for Linux. Tested on Proxmox 9 and Ubuntu 24.04 LTS.
 
@@ -47,7 +47,7 @@ Full instructions available at [blog.ktz.me](https://blog.ktz.me/i-need-your-hel
 ssh user@hostname
 
 # Install dependencies (tested on Proxmox 8 + Ubuntu 22.04)
-apt install docker.io jq bc intel-gpu-tools git curl
+apt install docker.io jq intel-gpu-tools git curl
 
 # Clone the repository
 git clone https://github.com/ironicbadger/quicksync_calc.git
@@ -67,9 +67,41 @@ You can automatically submit your results to the online database:
 
 # Submit with your own identifier (for filtering your results later)
 QUICKSYNC_ID="my_homelab" ./quicksync-benchmark.sh
+
+# Run without submitting
+./quicksync-benchmark.sh --no-submit
 ```
 
 deprecated ~~Alternatively, you can still manually copy results to the [GitHub Gist](https://gist.github.com/ironicbadger/5da9b321acbe6b6b53070437023b844d).~~
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--skip-warnings` | Skip the GPU process warning prompt and the concurrency confirmation prompt |
+| `--concurrency` | Run the standard single-stream benchmarks **plus** concurrency tests (how many simultaneous streams the hardware can sustain at ≥1.0× realtime) |
+| `--concurrency-only` | Skip single-stream benchmarks and run **only** concurrency tests as a local measurement. Useful when you don't want to rerun single-stream benchmarks. Results are **not** uploaded in this mode — concurrency results need to be linked to a verified standard-benchmark run, so this mode is local-only |
+| `--max-concurrency N` | Cap concurrency tests at N simultaneous streams (default: `20`). The test still short-circuits early once speed drops below 1.0×, so raising this is safe on weaker hardware |
+| `--no-submit` | Skip uploading results to the online database (equivalent to `QUICKSYNC_NO_SUBMIT=1`) |
+
+| Environment variable | Description |
+|----------------------|-------------|
+| `QUICKSYNC_ID` | Optional identifier attached to your submissions, lets you filter your own results on the website |
+| `QUICKSYNC_NO_SUBMIT=1` | Same as `--no-submit` |
+| `QUICKSYNC_API_URL` | Override the default API endpoint (`https://quicksync-api.ktz.me`); useful for self-hosted deployments |
+
+#### Examples
+
+```bash
+# Standard run with concurrency tests, capped at 30 streams
+./quicksync-benchmark.sh --concurrency --max-concurrency 30
+
+# Local concurrency measurement (results not uploaded)
+./quicksync-benchmark.sh --concurrency-only
+
+# Local-only run with no submission and a stable identifier
+QUICKSYNC_ID="my_homelab" ./quicksync-benchmark.sh --no-submit --skip-warnings
+```
 
 ## Sample Output
 

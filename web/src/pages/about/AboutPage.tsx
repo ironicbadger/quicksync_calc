@@ -141,7 +141,7 @@ export function AboutPage() {
             <code>jq</code> (for JSON parsing)
           </li>
           <li>
-            <code>bc</code> (for calculations)
+            <code>awk</code> (for calculations - typically pre-installed)
           </li>
         </ul>
       </div>
