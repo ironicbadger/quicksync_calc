@@ -330,6 +330,43 @@ stop_container(){
   docker rm -f jellyfin-qsvtest >/dev/null 2>&1 || true
 }
 
+is_low_power_soc(){
+  echo "$cpu_model" | grep -qiE '(Celeron|Pentium).*[JN][0-9]{4}|(^|[[:space:]])[JN][0-9]{4}'
+}
+
+power_min_watts(){
+  if is_low_power_soc; then
+    echo "0.25"
+  else
+    echo "3"
+  fi
+}
+
+power_expected_range(){
+  if is_low_power_soc; then
+    echo "0.25-10W"
+  else
+    echo "10-50W"
+  fi
+}
+
+intel_gpu_top_details(){
+  local top_path
+  top_path=$(command -v intel_gpu_top 2>/dev/null || true)
+  if [ -z "$top_path" ]; then
+    echo "not found"
+    return
+  fi
+
+  if command -v rpm >/dev/null 2>&1; then
+    rpm -qf "$top_path" 2>/dev/null || echo "$top_path"
+  elif command -v dpkg-query >/dev/null 2>&1; then
+    dpkg-query -S "$top_path" 2>/dev/null || echo "$top_path"
+  else
+    echo "$top_path"
+  fi
+}
+
 benchmarks(){
   # Ensure container is still running before each benchmark
   ensure_container_running
@@ -341,30 +378,31 @@ benchmarks(){
 
   #Calculate average Wattage
   if [ $1 != "h264_1080p_cpu" ]; then
-    total_watts=$(
+    power_values=$(
       awk '{ print $5 }' $1.output \
       | grep -E '^[0-9.]+$' \
       | grep -Ev '^(0(\.0+)?|Power|gpu)$' \
-      | paste -s -d+ - \
-      | bc
     )
-    total_count=$(
-      awk '{ print $5 }' $1.output \
-      | grep -E '^[0-9.]+$' \
-      | grep -Ev '^(0(\.0+)?|Power|gpu)$' \
-      | wc -l
-    )
-    avg_watts=$(echo "scale=2; $total_watts / $total_count" | bc -l)
+    total_count=$(printf '%s\n' "$power_values" | grep -c .)
+
+    if [ "$total_count" -gt 0 ]; then
+      total_watts=$(printf '%s\n' "$power_values" | paste -s -d+ - | bc)
+      avg_watts=$(echo "scale=2; $total_watts / $total_count" | bc -l)
+    else
+      avg_watts="N/A"
+    fi
 
     # Validate power reading
-    if [ "$(echo "$avg_watts < 3" | bc -l)" -eq 1 ]; then
+    min_watts=$(power_min_watts)
+    expected_range=$(power_expected_range)
+    if [ "$avg_watts" != "N/A" ] && [ "$(echo "$avg_watts < $min_watts" | bc -l)" -eq 1 ]; then
       echo ""
       echo "======================================================="
       echo "           ⚠️  WARNING: LOW POWER READING"
       echo "======================================================="
       echo ""
       echo "Measured power: ${avg_watts}W"
-      echo "Expected range: 10-50W for typical encoding workloads"
+      echo "Expected range: ${expected_range} for this hardware class"
       echo ""
       echo "This suggests a power measurement issue:"
       echo "  - intel_gpu_top reporting incorrect power domain"
@@ -376,7 +414,7 @@ benchmarks(){
       echo ""
       echo "  CPU: $cpu_model"
       echo "  Power reading: ${avg_watts}W"
-      echo "  intel_gpu_top: $(intel_gpu_top --version 2>&1 | head -1)"
+      echo "  intel_gpu_top: $(intel_gpu_top_details)"
       echo "  Kernel: $(uname -r)"
       echo ""
       echo "Results will NOT be submitted to prevent data quality issues."
@@ -388,33 +426,56 @@ benchmarks(){
     avg_watts="N/A"
   fi
 
-  for i in $(ls ffmpeg-*.log); do
+  parse_failed=0
+  logfiles=(ffmpeg-*.log)
+
+  if [ ! -e "${logfiles[0]}" ]; then
+    parse_failed=1
+  fi
+
+  for i in "${logfiles[@]}"; do
+    [ -f "$i" ] || continue
+
     #Calculate average FPS
-    total_fps=$(grep -Eo 'fps=.[1-9][1-9].' $i | sed -e 's/fps=//' | paste -s -d + - | bc)
-    fps_count=$(grep -Eo 'fps=.[1-9][1-9].' $i | wc -l)
-    avg_fps=$(echo "scale=2; $total_fps / $fps_count" | bc -l)
+    fps_values=$(grep -Eo 'fps=[[:space:]]*[0-9]+(\.[0-9]+)?' "$i" | sed -E 's/fps=[[:space:]]*//')
+    fps_count=$(printf '%s\n' "$fps_values" | grep -c .)
+    if [ "$fps_count" -gt 0 ]; then
+      total_fps=$(printf '%s\n' "$fps_values" | paste -s -d+ - | bc)
+      avg_fps=$(echo "scale=2; $total_fps / $fps_count" | bc -l)
+    else
+      parse_failed=1
+    fi
 
     #Calculate average speed
-    total_speed=$(grep -Eo 'speed=[0-9]+(\.[0-9]+)?x' "$i" \
-      | sed -E 's/speed=([0-9.]+)x/\1/' \
-      | paste -s -d+ - \
-      | bc)
-    speed_count=$(grep -Eo 'speed=[0-9]+(\.[0-9]+)?x' "$i" | wc -l)
-    avg_speed="$(echo "scale=2; $total_speed / $speed_count" | bc -l)x"
+    speed_values=$(grep -Eo 'speed=[[:space:]]*[0-9]+(\.[0-9]+)?x' "$i" | sed -E 's/speed=[[:space:]]*([0-9.]+)x/\1/')
+    speed_count=$(printf '%s\n' "$speed_values" | grep -c .)
+    if [ "$speed_count" -gt 0 ]; then
+      total_speed=$(printf '%s\n' "$speed_values" | paste -s -d+ - | bc)
+      avg_speed="$(echo "scale=2; $total_speed / $speed_count" | bc -l)x"
+    else
+      parse_failed=1
+    fi
 
     #Get Bitrate of file
-    bitrate=$(grep -Eo 'bitrate: [1-9].*' $i | sed -e 's/bitrate: //')
+    bitrate=$(grep -m1 -Eo 'bitrate: [0-9]+ kb/s' "$i" | sed -e 's/bitrate: //')
+    [ -n "$bitrate" ] || parse_failed=1
 
     #Get time to convert
-    total_time=$(grep -Eo 'rtime=[0-9]+\.[0-9]+s' $i | sed -e 's/rtime=//')
+    total_time=$(grep -Eo 'rtime=[0-9]+(\.[0-9]+)?s' "$i" | tail -1 | sed -e 's/rtime=//')
+    [ -n "$total_time" ] || parse_failed=1
 
     #delete log file
-    rm -rf $i
-    rm -rf $1.output
+    rm -f "$i"
   done
+  rm -f "$1.output"
 
   #Add data to array
-  quicksyncstats_arr+=("$cpu_model|$1|$2|$bitrate|$total_time|$avg_fps|$avg_speed|$avg_watts")
+  if [ "$parse_failed" -eq 1 ]; then
+    echo "  WARNING: Could not parse complete FFmpeg metrics for $1; marking test as FAILED."
+    quicksyncstats_arr+=("$cpu_model|$1|$2|${bitrate:-N/A}|${total_time:-N/A}|FAILED|FAILED|$avg_watts")
+  else
+    quicksyncstats_arr+=("$cpu_model|$1|$2|$bitrate|$total_time|$avg_fps|$avg_speed|$avg_watts")
+  fi
 
   clear_vars
 
@@ -422,8 +483,8 @@ benchmarks(){
 
 clear_vars(){
 
- for i in total_watts total_count avg_watts total_fps fps_count avg_fps total_speed speed_count avg_speed bitrate total_time; do
-   unset $i
+ for i in power_values total_watts total_count avg_watts min_watts expected_range total_fps fps_count avg_fps fps_values total_speed speed_count avg_speed speed_values bitrate total_time parse_failed logfiles; do
+	 unset $i
  done
 
 }
